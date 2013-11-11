@@ -1,0 +1,155 @@
+object MainFrm: TMainFrm
+  Left = 260
+  Height = 494
+  Top = 144
+  Width = 717
+  Caption = 'pas2llvm'
+  ClientHeight = 494
+  ClientWidth = 717
+  OnCreate = FormCreate
+  Position = poDesktopCenter
+  LCLVersion = '1.0.1.3'
+  object Panel1: TPanel
+    Left = 0
+    Height = 161
+    Top = 0
+    Width = 717
+    Align = alTop
+    BevelOuter = bvNone
+    ClientHeight = 161
+    ClientWidth = 717
+    TabOrder = 0
+    object Label1: TLabel
+      Left = 68
+      Height = 13
+      Top = 11
+      Width = 73
+      Caption = 'Source File:'
+      ParentColor = False
+    end
+    object Label2: TLabel
+      Left = 8
+      Height = 13
+      Top = 35
+      Width = 133
+      Caption = 'Unit Output Directory:'
+      ParentColor = False
+    end
+    object Label3: TLabel
+      Left = 20
+      Height = 13
+      Top = 83
+      Width = 121
+      Caption = 'Library Directories:'
+      ParentColor = False
+    end
+    object Label4: TLabel
+      Left = 32
+      Height = 13
+      Top = 59
+      Width = 109
+      Caption = 'Include Directory:'
+      ParentColor = False
+    end
+    object btnCompile: TButton
+      Left = 552
+      Height = 25
+      Top = 8
+      Width = 75
+      Caption = 'Compile'
+      OnClick = btnCompileClick
+      TabOrder = 4
+    end
+    object edt_SrcFile: TEdit
+      Left = 152
+      Height = 20
+      Top = 8
+      Width = 376
+      TabOrder = 0
+      Text = 'test2\b6.pas'
+    end
+    object edt_UnitOutputDir: TEdit
+      Left = 152
+      Height = 20
+      Top = 32
+      Width = 376
+      TabOrder = 1
+    end
+    object mmo_LibDirs: TMemo
+      Left = 152
+      Height = 73
+      Top = 80
+      Width = 376
+      ScrollBars = ssBoth
+      TabOrder = 3
+    end
+    object edt_IncludeDir: TEdit
+      Left = 152
+      Height = 20
+      Top = 56
+      Width = 376
+      TabOrder = 2
+    end
+    object btnCopy: TButton
+      Left = 552
+      Height = 25
+      Top = 40
+      Width = 75
+      Caption = 'Copy'
+      OnClick = btnCopyClick
+      TabOrder = 5
+    end
+    object btnClear: TButton
+      Left = 552
+      Height = 25
+      Top = 72
+      Width = 75
+      Caption = 'Clear'
+      OnClick = btnClearClick
+      TabOrder = 6
+    end
+    object btnGenSys: TButton
+      Left = 552
+      Height = 25
+      Top = 104
+      Width = 128
+      Caption = 'Generate System cu'
+      OnClick = btnGenSysClick
+      TabOrder = 7
+    end
+  end
+  object pgc1: TPageControl
+    Left = 0
+    Height = 333
+    Top = 161
+    Width = 717
+    ActivePage = TabSheet1
+    Align = alClient
+    TabIndex = 0
+    TabOrder = 1
+    TabPosition = tpBottom
+    object TabSheet1: TTabSheet
+      Caption = 'Output'
+      ClientHeight = 308
+      ClientWidth = 709
+      object mmo_Output: TMemo
+        Left = 0
+        Height = 308
+        Top = 0
+        Width = 709
+        Align = alClient
+        Font.CharSet = GB2312_CHARSET
+        Font.Color = clWindowText
+        Font.Height = -12
+        Font.Name = 'Fixedsys'
+        ParentFont = False
+        ScrollBars = ssVertical
+        TabOrder = 0
+      end
+    end
+    object TabSheet2: TTabSheet
+      Caption = 'Module'
+      ImageIndex = 1
+    end
+  end
+end

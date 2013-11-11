@@ -1,0 +1,463 @@
+<?xml version="1.0"?>
+<CONFIG>
+  <ProjectSession>
+    <PathDelim Value="\"/>
+    <Version Value="9"/>
+    <BuildModes Active="Default"/>
+    <Units Count="40">
+      <Unit0>
+        <Filename Value="lpcw.lpr"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="lpcw"/>
+        <EditorIndex Value="0"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="3"/>
+        <CursorPos X="83" Y="13"/>
+        <UsageCount Value="78"/>
+        <Loaded Value="True"/>
+      </Unit0>
+      <Unit1>
+        <Filename Value="main.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="MainFrm"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="Main"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="3"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="107"/>
+        <CursorPos X="53" Y="122"/>
+        <UsageCount Value="78"/>
+        <Loaded Value="True"/>
+        <LoadedDesigner Value="True"/>
+      </Unit1>
+      <Unit2>
+        <Filename Value="cupersist.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="cupersist"/>
+        <EditorIndex Value="2"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1259"/>
+        <CursorPos X="5" Y="1262"/>
+        <UsageCount Value="49"/>
+        <Loaded Value="True"/>
+      </Unit2>
+      <Unit3>
+        <Filename Value="expr.inc"/>
+        <IsPartOfProject Value="True"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1792"/>
+        <CursorPos X="13" Y="1795"/>
+        <UsageCount Value="49"/>
+      </Unit3>
+      <Unit4>
+        <Filename Value="ast.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="ast"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="3393"/>
+        <CursorPos X="28" Y="3408"/>
+        <UsageCount Value="49"/>
+      </Unit4>
+      <Unit5>
+        <Filename Value="lex.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="lex"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="2702"/>
+        <CursorPos X="26" Y="2712"/>
+        <UsageCount Value="49"/>
+      </Unit5>
+      <Unit6>
+        <Filename Value="func.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="func"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="105"/>
+        <CursorPos X="13" Y="114"/>
+        <UsageCount Value="49"/>
+      </Unit6>
+      <Unit7>
+        <Filename Value="fileutils.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="fileutils"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="28"/>
+        <CursorPos X="21" Y="37"/>
+        <UsageCount Value="49"/>
+      </Unit7>
+      <Unit8>
+        <Filename Value="cntx.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="cntx"/>
+        <EditorIndex Value="1"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="395"/>
+        <CursorPos X="6" Y="402"/>
+        <UsageCount Value="49"/>
+        <Loaded Value="True"/>
+      </Unit8>
+      <Unit9>
+        <Filename Value="llvmemit.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="llvmemit"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1113"/>
+        <CursorPos X="3" Y="1122"/>
+        <UsageCount Value="49"/>
+      </Unit9>
+      <Unit10>
+        <Filename Value="ptrhashtable.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="ptrhashtable"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1"/>
+        <CursorPos X="36" Y="10"/>
+        <UsageCount Value="49"/>
+      </Unit10>
+      <Unit11>
+        <Filename Value="hashtable.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="hashtable"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1"/>
+        <CursorPos X="1" Y="1"/>
+        <UsageCount Value="49"/>
+      </Unit11>
+      <Unit12>
+        <Filename Value="err.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="err"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1"/>
+        <CursorPos X="12" Y="5"/>
+        <UsageCount Value="49"/>
+      </Unit12>
+      <Unit13>
+        <Filename Value="exprh.inc"/>
+        <IsPartOfProject Value="True"/>
+        <UsageCount Value="49"/>
+      </Unit13>
+      <Unit14>
+        <Filename Value="E:\Software\lazarus\lcl\lclproc.pas"/>
+        <UnitName Value="LCLProc"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="31"/>
+        <CursorPos X="66" Y="42"/>
+        <UsageCount Value="4"/>
+      </Unit14>
+      <Unit15>
+        <Filename Value="E:\Software\lazarus\components\lazutils\fileutil.pas"/>
+        <UnitName Value="FileUtil"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="14"/>
+        <CursorPos X="1" Y="1"/>
+        <UsageCount Value="4"/>
+      </Unit15>
+      <Unit16>
+        <Filename Value="fileutil.pas"/>
+        <UnitName Value="fileutil"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1"/>
+        <CursorPos X="15" Y="1"/>
+        <UsageCount Value="4"/>
+      </Unit16>
+      <Unit17>
+        <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\objpas\classes\classesh.inc"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="688"/>
+        <CursorPos X="14" Y="697"/>
+        <UsageCount Value="4"/>
+      </Unit17>
+      <Unit18>
+        <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\objpas\classes\stringl.inc"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1237"/>
+        <CursorPos X="3" Y="1243"/>
+        <UsageCount Value="4"/>
+      </Unit18>
+      <Unit19>
+        <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\i386\i386.inc"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1596"/>
+        <CursorPos X="1" Y="1605"/>
+        <UsageCount Value="4"/>
+      </Unit19>
+      <Unit20>
+        <Filename Value="parser.pas"/>
+        <UnitName Value="parser"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="109"/>
+        <CursorPos X="12" Y="113"/>
+        <UsageCount Value="8"/>
+      </Unit20>
+      <Unit21>
+        <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\inc\heaptrc.pp"/>
+        <UnitName Value="heaptrc"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1151"/>
+        <CursorPos X="48" Y="1166"/>
+        <UsageCount Value="5"/>
+      </Unit21>
+      <Unit22>
+        <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\inc\systemh.inc"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="805"/>
+        <CursorPos X="61" Y="820"/>
+        <UsageCount Value="5"/>
+      </Unit22>
+      <Unit23>
+        <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\inc\system.inc"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="607"/>
+        <CursorPos X="3" Y="612"/>
+        <UsageCount Value="5"/>
+      </Unit23>
+      <Unit24>
+        <Filename Value="expr.pas"/>
+        <UnitName Value="expr"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="3124"/>
+        <CursorPos X="1" Y="3140"/>
+        <UsageCount Value="6"/>
+      </Unit24>
+      <Unit25>
+        <Filename Value="dump.pas"/>
+        <UnitName Value="dump"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1"/>
+        <CursorPos X="1" Y="6"/>
+        <UsageCount Value="5"/>
+      </Unit25>
+      <Unit26>
+        <Filename Value="start.pas"/>
+        <UnitName Value="start"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="31"/>
+        <CursorPos X="25" Y="5"/>
+        <UsageCount Value="5"/>
+      </Unit26>
+      <Unit27>
+        <Filename Value="..\fpc\keysearch\cpp\ks2.cpp"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="10"/>
+        <CursorPos X="27" Y="12"/>
+        <UsageCount Value="7"/>
+        <DefaultSyntaxHighlighter Value="C++"/>
+      </Unit27>
+      <Unit28>
+        <Filename Value="..\fpc\keysearch\cpp\ks.cpp"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="4"/>
+        <CursorPos X="69" Y="10"/>
+        <UsageCount Value="7"/>
+        <DefaultSyntaxHighlighter Value="C++"/>
+      </Unit28>
+      <Unit29>
+        <Filename Value="E:\Software\lazarus\ide\codebrowser.pas"/>
+        <ComponentName Value="CodeBrowserView"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="CodeBrowser"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1"/>
+        <CursorPos X="1" Y="1"/>
+        <UsageCount Value="7"/>
+      </Unit29>
+      <Unit30>
+        <Filename Value="E:\Software\lazarus\ide\codeexplopts.pas"/>
+        <UnitName Value="CodeExplOpts"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="148"/>
+        <CursorPos X="42" Y="155"/>
+        <UsageCount Value="7"/>
+      </Unit30>
+      <Unit31>
+        <Filename Value="E:\Software\lazarus\ide\codeexplorer.pas"/>
+        <ComponentName Value="CodeExplorerView"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="CodeExplorer"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="983"/>
+        <CursorPos X="80" Y="1000"/>
+        <UsageCount Value="7"/>
+      </Unit31>
+      <Unit32>
+        <Filename Value="E:\Software\lazarus\components\codetools\codetoolmanager.pas"/>
+        <UnitName Value="CodeToolManager"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1647"/>
+        <CursorPos X="3" Y="1651"/>
+        <UsageCount Value="7"/>
+      </Unit32>
+      <Unit33>
+        <Filename Value="E:\Software\lazarus\components\codetools\codecache.pas"/>
+        <UnitName Value="CodeCache"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="114"/>
+        <CursorPos X="3" Y="51"/>
+        <UsageCount Value="7"/>
+      </Unit33>
+      <Unit34>
+        <Filename Value="E:\Software\lazarus\components\codetools\stdcodetools.pas"/>
+        <UnitName Value="StdCodeTools"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="6767"/>
+        <CursorPos X="3" Y="6773"/>
+        <UsageCount Value="7"/>
+      </Unit34>
+      <Unit35>
+        <Filename Value="E:\Software\lazarus\components\codetools\linkscanner.pas"/>
+        <UnitName Value="LinkScanner"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="120"/>
+        <CursorPos X="3" Y="123"/>
+        <UsageCount Value="7"/>
+      </Unit35>
+      <Unit36>
+        <Filename Value="E:\Software\lazarus\components\codetools\pascalparsertool.pas"/>
+        <UnitName Value="PascalParserTool"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="5441"/>
+        <CursorPos X="3" Y="5416"/>
+        <UsageCount Value="7"/>
+      </Unit36>
+      <Unit37>
+        <Filename Value="E:\Software\lazarus\components\codetools\customcodetool.pas"/>
+        <UnitName Value="CustomCodeTool"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="174"/>
+        <CursorPos X="5" Y="183"/>
+        <UsageCount Value="7"/>
+      </Unit37>
+      <Unit38>
+        <Filename Value="E:\Software\lazarus\components\codetools\codetree.pas"/>
+        <UnitName Value="CodeTree"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="235"/>
+        <CursorPos X="3" Y="238"/>
+        <UsageCount Value="7"/>
+      </Unit38>
+      <Unit39>
+        <Filename Value="main.lfm"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="118"/>
+        <CursorPos X="27" Y="132"/>
+        <UsageCount Value="9"/>
+        <DefaultSyntaxHighlighter Value="LFM"/>
+      </Unit39>
+    </Units>
+    <General>
+      <ActiveWindowIndexAtStart Value="0"/>
+    </General>
+    <JumpHistory Count="26" HistoryIndex="24">
+      <Position1>
+        <Filename Value="main.pas"/>
+        <Caret Line="55" Column="16" TopLine="54"/>
+      </Position1>
+      <Position2>
+        <Filename Value="main.pas"/>
+        <Caret Line="54" Column="16" TopLine="53"/>
+      </Position2>
+      <Position3>
+        <Filename Value="main.pas"/>
+        <Caret Line="55" Column="16" TopLine="54"/>
+      </Position3>
+      <Position4>
+        <Filename Value="main.pas"/>
+        <Caret Line="54" Column="16" TopLine="53"/>
+      </Position4>
+      <Position5>
+        <Filename Value="main.pas"/>
+        <Caret Line="55" Column="16" TopLine="54"/>
+      </Position5>
+      <Position6>
+        <Filename Value="main.pas"/>
+        <Caret Line="54" Column="16" TopLine="53"/>
+      </Position6>
+      <Position7>
+        <Filename Value="main.pas"/>
+        <Caret Line="55" Column="16" TopLine="54"/>
+      </Position7>
+      <Position8>
+        <Filename Value="main.pas"/>
+        <Caret Line="54" Column="16" TopLine="53"/>
+      </Position8>
+      <Position9>
+        <Filename Value="main.pas"/>
+        <Caret Line="53" Column="16" TopLine="52"/>
+      </Position9>
+      <Position10>
+        <Filename Value="main.pas"/>
+        <Caret Line="52" Column="16" TopLine="51"/>
+      </Position10>
+      <Position11>
+        <Filename Value="main.pas"/>
+        <Caret Line="53" Column="16" TopLine="52"/>
+      </Position11>
+      <Position12>
+        <Filename Value="main.pas"/>
+        <Caret Line="200" Column="7" TopLine="184"/>
+      </Position12>
+      <Position13>
+        <Filename Value="main.pas"/>
+        <Caret Line="59" Column="26" TopLine="50"/>
+      </Position13>
+      <Position14>
+        <Filename Value="main.pas"/>
+        <Caret Line="187" Column="3" TopLine="182"/>
+      </Position14>
+      <Position15>
+        <Filename Value="main.pas"/>
+        <Caret Line="198" Column="1" TopLine="183"/>
+      </Position15>
+      <Position16>
+        <Filename Value="main.pas"/>
+        <Caret Line="124" Column="34" TopLine="107"/>
+      </Position16>
+      <Position17>
+        <Filename Value="main.pas"/>
+        <Caret Line="125" Column="34" TopLine="108"/>
+      </Position17>
+      <Position18>
+        <Filename Value="main.pas"/>
+        <Caret Line="126" Column="34" TopLine="109"/>
+      </Position18>
+      <Position19>
+        <Filename Value="main.pas"/>
+        <Caret Line="127" Column="34" TopLine="110"/>
+      </Position19>
+      <Position20>
+        <Filename Value="main.pas"/>
+        <Caret Line="126" Column="34" TopLine="109"/>
+      </Position20>
+      <Position21>
+        <Filename Value="main.pas"/>
+        <Caret Line="125" Column="34" TopLine="108"/>
+      </Position21>
+      <Position22>
+        <Filename Value="main.pas"/>
+        <Caret Line="124" Column="34" TopLine="107"/>
+      </Position22>
+      <Position23>
+        <Filename Value="main.pas"/>
+        <Caret Line="125" Column="34" TopLine="108"/>
+      </Position23>
+      <Position24>
+        <Filename Value="main.pas"/>
+        <Caret Line="124" Column="34" TopLine="107"/>
+      </Position24>
+      <Position25>
+        <Filename Value="cntx.pas"/>
+        <Caret Line="395" Column="3" TopLine="392"/>
+      </Position25>
+      <Position26>
+        <Filename Value="cntx.pas"/>
+        <Caret Line="376" Column="49" TopLine="367"/>
+      </Position26>
+    </JumpHistory>
+  </ProjectSession>
+  <EditorMacros Count="0"/>
+</CONFIG>
