@@ -1,6 +1,6 @@
 unit start;
 {$ifdef FPC}
-{$mode delphi}{$H+}
+  {$mode delphi}{$H+}
 {$endif}
 
 interface
