@@ -57,13 +57,6 @@ type
     Typ: TAutoInitVarType;
   end;
 
-  TSimpleList = record
-    List: array of TSymbol;
-    Count: Integer;
-  end;
-
-  TLocalInitList = array[TAutoInitVarType] of TSimpleList;
-
   TEmitFuncContext = class
   private
     procedure ClearTempVars;
@@ -141,7 +134,7 @@ type
     procedure EmitAStr(pub: Boolean; const name, s: string);
     procedure EmitWStr(pub: Boolean; const name: string; const s: WideString);
     procedure EmitUStr(pub: Boolean; const name: string; const s: WideString);
-    //procedure EmitUStrVar(V: TVariable
+
     function EmitCall(const cc, invStmt, fn_attr: string): string; overload;
     procedure EmitCall(const func, retVar, cc, fn_attr: string;
                         const typs, args: array of string); overload;
@@ -154,6 +147,7 @@ type
     function ArgTypeStr(T: TType; Modifier: TArgumentModifier): string;
     function ArgDeclStr(Arg: TArgument; NeedName: Boolean): string;
     function ProcTypeStr(T: TProceduralType; const Name: string = ''): string;
+
     // 如果Name='',则使用F.Name
     function FuncDecl(F: TFunctionDecl; NeedArgName: Boolean; const Name: string = ''): string;
     function CCStr(cc: TCallingConvention): string;
