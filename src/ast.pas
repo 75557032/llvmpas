@@ -888,7 +888,7 @@ type
     Args: TList; // TArgument
     ReturnType: TType;
     CallConvention: TCallingConvention;
-    IsOfObject: Boolean;
+    IsMethodPointer: Boolean;
 
     constructor Create; override;
     destructor Destroy; override;
@@ -1145,7 +1145,10 @@ type
   TFunctionModifier = (fmVirtual, fmDynamic, fmAbstract, fmOverride,
                        fmOverload, fmMessage, fmReintroduce, fmStatic,
                        fmInline, fmAssembler, fmVarargs, fmLocal, fmDispID,
-                       fmExport, fmNear, fmFar, fmExternal, fmForward);
+                       fmExport, fmNear, fmFar, fmExternal, fmForward,
+
+                       fmNoReturn     // 相当于llvm的noreturn
+                       );
   TFunctionModifiers = set of TFunctionModifier;
 
 {  TFuncAttr = (faVirtual, faDynamic, faAbstract, faOverride,
@@ -1994,7 +1997,9 @@ end;
 
 function ValToVar(const V: TValueRec): Variant;
 begin
-  
+{$ifdef fpc}
+  Result := Null;
+{$endif}
 end;
 
 type
@@ -2819,7 +2824,7 @@ function TType.Equals(typ: TType): Boolean;
       Result := True;
     end;
   begin
-    Result := (P1.IsOfObject = P2.IsOfObject)
+    Result := (P1.IsMethodPointer = P2.IsMethodPointer)
               and (P1.CountOfArgs = P2.CountOfArgs)
               and RetEquals(P1.ReturnType, P2.ReturnType)
               and AllArgsEqual(P1, P2);
@@ -4816,7 +4821,7 @@ end;
 procedure TMethod.CreateProceduralType;
 begin
   inherited;
-  FProcType.IsOfObject := True;
+  FProcType.IsMethodPointer := not (fmStatic in Self.Modifiers);
 end;
 
 function TMethod.IsClassOrStatic: Boolean;

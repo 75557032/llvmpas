@@ -2,7 +2,7 @@
 procedure TParser.FindProper(E: TUnaryExpr; ProcType: TProceduralType);
   function IsProper(Func: TFunctionDecl): boolean;
   begin
-    Result := ProcType.IsOfObject = ((Func.NodeKind = nkMethod) and not TMethod(Func).IsClassOrStatic);
+    Result := ProcType.IsMethodPointer = ((Func.NodeKind = nkMethod) and not TMethod(Func).IsClassOrStatic);
     if Result then
       Result := ProcType.Equals(Func.ProceduralType);
   end;
@@ -111,12 +111,13 @@ const
       opSYMBOL:
         if TSymbolExpr(Expr).Reference <> nil then
           Invalid := TSymbolExpr(Expr).Reference.NodeKind in Kinds;
-      opMEMBER: begin
-        Assert(TBinaryExpr(Expr).Right.OpCode = opSYMBOL, 'NotAllowNode');
-        Expr := TBinaryExpr(Expr).Right;
-        if TSymbolExpr(Expr).Reference <> nil then
-          Invalid := TSymbolExpr(Expr).Reference.NodeKind in Kinds;
-      end;
+      opMEMBER:
+        begin
+          Assert(TBinaryExpr(Expr).Right.OpCode = opSYMBOL, 'NotAllowNode');
+          Expr := TBinaryExpr(Expr).Right;
+          if TSymbolExpr(Expr).Reference <> nil then
+            Invalid := TSymbolExpr(Expr).Reference.NodeKind in Kinds;
+        end;
     end;
 
     if Invalid then
@@ -1044,7 +1045,7 @@ type
       if (T1 <> nil) and (T2 <> nil) then
       begin
       // 这里使函数指针可以传给无类型指针
-        if ((T2.TypeCode = typProcedural) and not TProceduralType(T2).IsOfObject)
+        if ((T2.TypeCode = typProcedural) and not TProceduralType(T2).IsMethodPointer)
             and T1.IsUntypePointer then
           Result := True
         else

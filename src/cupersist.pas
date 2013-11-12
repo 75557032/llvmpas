@@ -100,7 +100,7 @@ type
     destructor Destroy; override;
     procedure Open(const UnitFile: string);
     procedure Close;
-    procedure GetHeader(var Header: TModuleHeader);
+    procedure GetHeader(out Header: TModuleHeader);
     procedure ReadModule(M: TModule; Cntx: TCompileContext);
   end;
 
@@ -110,7 +110,7 @@ type
   TByteData = array[0..10] of Byte;
   PByteData = ^TByteData;
 
-procedure EncodeUInt32(value: Cardinal; var buf: TByteData; out len: Integer);
+procedure EncodeUInt32(value: Cardinal; out buf: TByteData; out len: Integer);
 begin
   len := 0;
   while value >= $80 do
@@ -123,7 +123,7 @@ begin
   Inc(len);
 end;
 
-procedure EncodeSInt32(value: Integer; var buf: TByteData; out len: Integer);
+procedure EncodeSInt32(value: Integer; out buf: TByteData; out len: Integer);
 var
   endVal, signExt: Integer;
   b: Byte;
@@ -156,7 +156,7 @@ begin
   end;
 end;
 
-procedure EncodeInt64(value: Int64; var buf: TByteData; out len: Integer);
+procedure EncodeInt64(value: Int64; out buf: TByteData; out len: Integer);
 var
   endVal, signExt: Int64;
   b: Byte;
@@ -830,7 +830,7 @@ procedure TCUWriter.WriteType(Typ: TType);
     WriteByte(Ord(typ.TypeCode));
     WriteRef(typ.ReturnType);
     WriteUInt32(byte(typ.CallConvention));
-    WriteBool(typ.IsOfObject);
+    WriteBool(typ.IsMethodPointer);
     WriteArgs(typ.Args);
   end;
 
@@ -1240,7 +1240,7 @@ begin
   FmtError(Format(s, Args));
 end;
 
-procedure TCUReader.GetHeader(var Header: TModuleHeader);
+procedure TCUReader.GetHeader(out Header: TModuleHeader);
 var
   s: string;
 begin
@@ -1265,7 +1265,7 @@ procedure TCUReader.GetRef(Inst: TSymbol; Ref: Pointer;
   begin
     if ExpectNodes <> [] then
       if not (nkAccessor in ExpectNodes) then
-        raise ECUReadError.CreateFmt('Invalid symbol: %s', [s]);
+        raise ECUReadError.Create('Invalid symbol');
     count := ReadUInt32;
     if count < 2 then FmtError;
     acc := TMultiAccessor(CreateSymbol(TMultiAccessor));
@@ -1557,7 +1557,7 @@ function TCUReader.GetType: TType;
     Result := TProceduralType(CreateSymbol(TProceduralType));
     GetRef(Result, @Result.ReturnType, fkAddr, [nkType], []);
     Result.CallConvention := TCallingConvention(Byte(ReadUInt32));
-    Result.IsOfObject := ReadBool;
+    Result.IsMethodPointer := ReadBool;
     i := ReadUInt32;
     if i > 0 then
     begin
@@ -1926,9 +1926,6 @@ end;
 
 procedure TCUReader.ReadModule(M: TModule; Cntx: TCompileContext);
   procedure SplitNameScope(M: TModule);
-  var
-    s: string;
-    i: Integer;
   begin
     
   end;

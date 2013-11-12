@@ -392,23 +392,37 @@ function _Round(v: Double): Int64;
 function _Trunc(v: Double): Int64;
 
 // -------------------------
-procedure _AStrClr(var s: AnsiString);
-function _AStrComp(const s1, s2: AnsiString): Integer;
-function _AStrEqual(const s1, s2: AnsiString): Boolean;
-procedure _AStrCopyAsg(const Source: AnsiString; var Dest: AnsiString);
-procedure _AStrAsg(const Source: AnsiString; var Dest: AnsiString);
-procedure _AStr2SStr(const Source: AnsiString; Dest: PAnsiChar; MaxLen: Integer);
-procedure _AStr2WStr(const Source: AnsiString; var Dest: WideString);
-procedure _AStr2UStr(const Source: AnsiString; var Dest: UnicodeString);
+procedure _AStrClr(var S: AnsiString);
+procedure _AStrNew(var S: AnsiString; Count: Integer);
+function _AStrPtr(const S: AnsiString): PAnsiChar;
+function _AStrLength(const S: AnsiString): Integer;
+function _AStrComp(const S1, S2: AnsiString): Integer;
+function _AStrEqual(const S1, S2: AnsiString): Boolean;
+procedure _AStrAsgCopy(var Dest: AnsiString; const Source: AnsiString);
+procedure _AStrAsg(var Dest: AnsiString; const Source: AnsiString);
+procedure _AStrSetLength(var S: AnsiString; Len: Integer);
+procedure _AStrCopy(var Dest: AnsiString; const Source: AnsiString; Start, Count: Integer);
+procedure _AStrFromSStr(var Dest: AnsiString; Source: PAnsiChar);
+procedure _AStrFromWStr(var Dest: AnsiString; const Source: WideString);
+procedure _AStrFromUStr(var Dest: AnsiString; const Source: UnicodeString);
+procedure _AStrFromACh(var Dest: AnsiString; ACh: AnsiChar);
+procedure _AStrFromWCh(var Dest: AnsiString; WCh: WideChar);
+procedure _AStrFromPACh(var Dest: AnsiString; Buf: PAnsiChar);
+procedure _AStrFromPAChLen(var Dest: AnsiString; Buf: PAnsiChar; Count: Integer);
+procedure _AStrFromPWCh(var Dest: AnsiString; Buf: PWideChar);
+procedure _AStrFromPWChLen(var Dest: AnsiString; Buf: PWideChar; Count: Integer);
+procedure _AStrFromAArray(var Dest: AnsiString; Buf: PAnsiChar; Count: Integer);
+procedure _AStrFromWArray(var Dest: AnsiString; Buf: PWideChar; Count: Integer);
 procedure _AStrCat(var S1: AnsiString; const S2: AnsiString);
 procedure _AStrCat3(var S1: AnsiString; const S2, S3: AnsiString);
+procedure _AStrCatN(var S1: AnsiString; Count: Integer; StrList: Pointer);
 
 // -------------------------
 procedure _VarClr(var V: TVarData);
 procedure _VarOp(var V1: TVarData; const V2: TVarData; Op: TVarOp);
 procedure _VarNot(var V: TVarData);
 procedure _VarNeg(var V: TVarData);
-procedure _VarAsg(const Source: TVarData; var Dest: TVarData);
+procedure _VarCopy(var Dest: TVarData; const Source: TVarData);
 procedure _Var2AStr(const V: TVarData; var Dest: AnsiString);
 procedure _Var2WStr(const V: TVarData; var Dest: WideString);
 procedure _Var2UStr(const V: TVarData; var Dest: UnicodeString);
@@ -514,37 +528,113 @@ procedure _AStrClr(var s: AnsiString);
 begin
 end;
 
-function _AStrComp(const s1, s2: AnsiString): Integer;
+procedure _AStrNew(var S: AnsiString; Count: Integer);
+begin
+end;
+
+const
+	_EmptyStr: AnsiChar = #0;
+
+function _AStrPtr(const S: AnsiString): PAnsiChar;
+begin
+	if Pointer(S) = nil then
+		Result := @_EmptyStr
+	else
+		Result := Pointer(S);
+end;
+
+function _AStrLength(const S: AnsiString): Integer;
+begin
+	if Pointer(S) = nil then
+		Result := 0
+	else
+		Result := (PInteger(S) - 1)^;
+end;
+
+function _AStrComp(const S1, S2: AnsiString): Integer;
 begin
 	//todo :
 	Result := 0;
 end;
 
-function _AStrEqual(const s1, s2: AnsiString): Boolean;
+function _AStrEqual(const S1, S2: AnsiString): Boolean;
 begin
 	//todo :
 	Result := False;
 end;
 
-procedure _AStrCopyAsg(const Source: AnsiString; var Dest: AnsiString);
+procedure _AStrAsgCopy(var Dest: AnsiString; const Source: AnsiString);
 begin
 end;
 
-procedure _AStrAsg(const Source: AnsiString; var Dest: AnsiString);
+procedure _AStrAsg(var Dest: AnsiString; const Source: AnsiString);
 begin
 end;
 
-procedure _AStr2SStr(const Source: AnsiString; Dest: PAnsiChar; MaxLen: Integer);
+procedure _AStrSetLength(var S: AnsiString; Len: Integer);
 begin
 end;
 
-procedure _AStr2WStr(const Source: AnsiString; var Dest: WideString);
+procedure _AStrCopy(var Dest: AnsiString; const Source: AnsiString; Start, Count: Integer);
 begin
 end;
 
-procedure _AStr2UStr(const Source: AnsiString; var Dest: UnicodeString);
+procedure _AStrFromSStr(var Dest: AnsiString; Source: PAnsiChar);
 begin
 end;
+
+procedure _AStrFromWStr(var Dest: AnsiString; const Source: WideString);
+begin
+end;
+
+procedure _AStrFromUStr(var Dest: AnsiString; const Source: UnicodeString);
+begin
+end;
+
+procedure _AStrFromACh(var Dest: AnsiString; ACh: AnsiChar);
+begin
+end;
+
+procedure _AStrFromWCh(var Dest: AnsiString; WCh: WideChar);
+begin
+end;
+
+procedure _AStrFromPACh(var Dest: AnsiString; Buf: PAnsiChar);
+begin
+end;
+
+procedure _AStrFromPAChLen(var Dest: AnsiString; Buf: PAnsiChar; Count: Integer);
+begin
+end;
+
+procedure _AStrFromPWCh(var Dest: AnsiString; Buf: PWideChar);
+begin
+end;
+
+procedure _AStrFromPWChLen(var Dest: AnsiString; Buf: PWideChar; Count: Integer);
+begin
+end;
+
+procedure _AStrFromAArray(var Dest: AnsiString; Buf: PAnsiChar; Count: Integer);
+begin
+end;
+
+procedure _AStrFromWArray(var Dest: AnsiString; Buf: PWideChar; Count: Integer);
+begin
+end;
+
+procedure _AStrCat(var S1: AnsiString; const S2: AnsiString);
+begin
+end;
+
+procedure _AStrCat3(var S1: AnsiString; const S2, S3: AnsiString);
+begin
+end;
+
+procedure _AStrCatN(var S1: AnsiString; Count: Integer; StrList: Pointer);
+begin
+end;
+
 // -------------------------
 procedure _VarClr(var V: TVarData);
 begin
@@ -562,7 +652,7 @@ procedure _VarNeg(var V: TVarData);
 begin
 end;
 
-procedure _VarAsg(const Source: TVarData; var Dest: TVarData);
+procedure _VarCopy(var Dest: TVarData; const Source: TVarData);
 begin
 end;
 

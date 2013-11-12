@@ -41,6 +41,24 @@ type
 
   TParserErrorEvent = procedure (ErrInfo: TParserErrorInfo) of object;
 
+  // 系统函数
+  TSystemRoutine = (
+    srIntOverflow, srOutOfRange, srIOCheck,
+    srRaiseExcept, srSafecallCheck, srHandleSafecallExcept,
+    srInt64Div, srInt64Mod, srRound, srTrunc,
+
+    srAStrClr, srAStrNew, srAStrPtr, srAStrLength, srAStrComp,
+    srAStrEqual, srAStrAsg, srAStrAsgCopy, srAStrSetLength,
+    srAStrCopy, srAStrFromSStr, srAStrFromWStr,
+    srAStrFromUStr, srAStrFromACh, srAStrFromWCh, srAStrFromPACh,
+    srAStrFromPAChLen, srAStrFromPWCh, srAStrFromPWChLen,
+    srAStrFromAArray, srAStrFromWArray, srAStrCat, srAStrCat3, srAStrCatN,
+
+    srVarOp, srVarNot, srVarNeg, srVarCopy
+
+    // 以后再增加
+  );
+
   TCompileContext = class
   private
     FOpenArrayTypes: TList;
@@ -65,7 +83,7 @@ type
     FNativeIntType, FNativeUIntType: TType;
 
     FUntype: TType;     // 无类型(void)
-    FAnytype: TType;    // 用于无法计算的常量表达式, 表示类型可以任意 (这是一种错误)
+    FAnytype: TType;    // 没有返回值的表达式, 它的类型就是这个, 代表异常情况
 
     FShortintRangeType, FByteRangeType,
     FSmallintRangeType, FWordRangeType,
@@ -80,6 +98,8 @@ type
     FVarOpenArrayType: TOpenArrayType;
 
     FTrueConst, FFalseConst: TConstant;
+
+    FSystemRoutines: array [TSystemRoutine] of TFunction;
 
     procedure ClearNodes;
     procedure ClearParsers;
@@ -101,6 +121,7 @@ type
     function CreateSymbol(SymClass: TSymbolClass): TSymbol;
     procedure LoadSystemUnit;
     function LoadUnit(const UnitName: string): TModule; overload;
+    function GetSystemRoutine(Routine: TSystemRoutine): TFunction;
 //    function LoadUnit(const UnitName: string; const ExpectTimeStamp: TTimeStamp): TModule; overload;
     function Compile(const SrcFile, UnitFile: string; IsSys, DoGenCode: Boolean): TModule;
     function GetOpenArrayType(const typ: TType): TOpenArrayType;
@@ -426,7 +447,7 @@ begin
   IncludeDirs := TStringList.Create;
   UnitDirs := TStringList.Create;
   FSystemUnit := TModule.Create;
-  FSystemUnit.Name := 'system';
+  FSystemUnit.Name := 'System';
   AddPredefinedElements(FSystemUnit);
 end;
 
@@ -505,6 +526,42 @@ begin
   end;
 end;
 
+function TCompileContext.GetSystemRoutine(
+  Routine: TSystemRoutine): TFunction;
+const
+  FunStr: array[TSystemRoutine] of string = (
+    '_IntOverflow', '_OutOfRange', '_IOCheck',
+    '_RaiseExcept', '_SafecallCheck', '_HandleSafecallExcept',
+    '_Int64Div', '_Int64Mod', '_Round', '_Trunc',
+    '_AStrClr', '_AStrNew', '_AStrPtr', '_AStrLength', '_AStrComp',
+    '_AStrEqual', '_AStrAsg', '_AStrAsgCopy', '_AStrSetLength',
+    '_AStrCopy', '_AStrFromSStr', '_AStrFromWStr',
+    '_AStrFromUStr', '_AStrFromACh', '_AStrFromWCh', '_AStrFromPACh',
+    '_AStrFromPAChLen', '_AStrFromPWCh', '_AStrFromPWChLen',
+    '_AStrFromAArray', '_AStrFromWArray', '_AStrCat', '_AStrCat3', '_AStrCatN',
+    '_VarOp', '_VarNot', '_VarNeg', '_VarCopy'
+  );
+var
+  Sym: TSymbol;
+begin
+  Result := FSystemRoutines[Routine];
+  if Result = nil then
+  begin
+    Sym := FSystemUnit.FindSymbol(FunStr[Routine]);
+    if Assigned(Sym) and (Sym.NodeKind = nkFunc) then
+      Result := TFunction(Sym)
+    else
+      raise ECompileContextError.CreateFmt('System routine %s not found', [FunStr[Routine]]);
+
+    FSystemRoutines[Routine] := Result;
+    // 给某些函数添加属性, 便于llvm优化.
+    case Routine of
+      srIntOverflow, srOutOfRange, srRaiseExcept:
+        Include(Result.Modifiers, fmNoReturn);
+    end;
+  end;
+end;
+
 function TCompileContext.GetUnitFile(const APasFile: string): String;
 begin
   if Self.UnitOutputDir = '' then
@@ -522,13 +579,13 @@ procedure TCompileContext.LoadSystemUnit;
   begin
     Result := FSystemUnit.FindSymbol(s);
     if Result = nil then
-      raise Exception.CreateFmt('Identifier %s not found in system unit', [s]);
+      raise ECompileContextError.CreateFmt('Identifier %s not found in system unit', [s]);
     if ExpectKind <> nkSymbol then
       if Result.NodeKind <> ExpectKind then
-        raise Exception.CreateFmt('Invalid symbol: %s', [s]);
+        raise ECompileContextError.CreateFmt('Invalid symbol: %s', [s]);
     if ExpectType <> typUnknown then
       if TType(Result).TypeCode <> ExpectType then
-        raise Exception.CreateFmt('Invalid type: %s', [s]);
+        raise ECompileContextError.CreateFmt('Invalid type: %s', [s]);
   end;
 var
   Reader: TCUReader;

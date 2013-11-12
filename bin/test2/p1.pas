@@ -14,6 +14,34 @@ begin
 end;
 *)
 
+type
+	tmyobj = class
+	public
+		procedure test;
+	end;
+	
+	tobj2 = object
+	public
+		procedure test;
+	end;
+	
+	TMethPtr = procedure (Value: Integer) of object;
+
+procedure tmyobj.test;
+begin
+end;
+
+procedure tobj2.test;
+begin
+end;
+
+procedure test_meth(a: tmyobj; const b: tobj2; c: TMethPtr);
+begin
+	a.test;
+	b.test;
+	c(2);
+end;
+
 procedure test_cast(Instance: pointer; Offset: Integer);
 begin
 	PInteger(@PChar(Instance)[Offset])^ := 0;
@@ -21,10 +49,24 @@ end;
 
 type
 	TMyArr = array[0..5] of Integer;
-	
+	TMyEvent = procedure (Value: Integer) of object;
+	TMySet = set of 1..40;
+
+function test_spec_type(a: byte): TMySet;
+begin
+end;
+
+function test_spec_type2(a: byte): TMyEvent;
+begin
+end;
+
 function test_arg1(a: Integer): Integer;
 begin
+{$r+}
+{$q+}
 	result := a + 1;
+{$r-}
+{$q-}
 end;
 
 function test_arg2(var i: Integer): TMyArr;

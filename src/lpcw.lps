@@ -9,12 +9,10 @@
         <Filename Value="lpcw.lpr"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="lpcw"/>
-        <EditorIndex Value="0"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="3"/>
-        <CursorPos X="83" Y="13"/>
-        <UsageCount Value="78"/>
-        <Loaded Value="True"/>
+        <TopLine Value="4"/>
+        <CursorPos X="24" Y="7"/>
+        <UsageCount Value="82"/>
       </Unit0>
       <Unit1>
         <Filename Value="main.pas"/>
@@ -23,19 +21,24 @@
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="Main"/>
+        <EditorIndex Value="2"/>
         <WindowIndex Value="0"/>
         <TopLine Value="107"/>
         <CursorPos X="18" Y="113"/>
-        <UsageCount Value="78"/>
+        <UsageCount Value="82"/>
+        <Loaded Value="True"/>
       </Unit1>
       <Unit2>
         <Filename Value="cupersist.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="cupersist"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="1"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="1259"/>
-        <CursorPos X="48" Y="1267"/>
-        <UsageCount Value="49"/>
+        <TopLine Value="135"/>
+        <CursorPos X="52" Y="150"/>
+        <UsageCount Value="53"/>
+        <Loaded Value="True"/>
       </Unit2>
       <Unit3>
         <Filename Value="expr.inc"/>
@@ -43,34 +46,34 @@
         <WindowIndex Value="0"/>
         <TopLine Value="1792"/>
         <CursorPos X="13" Y="1795"/>
-        <UsageCount Value="49"/>
+        <UsageCount Value="53"/>
       </Unit3>
       <Unit4>
         <Filename Value="ast.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="ast"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="3393"/>
-        <CursorPos X="28" Y="3408"/>
-        <UsageCount Value="49"/>
+        <TopLine Value="870"/>
+        <CursorPos X="20" Y="891"/>
+        <UsageCount Value="53"/>
       </Unit4>
       <Unit5>
         <Filename Value="lex.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="lex"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="2702"/>
+        <TopLine Value="224"/>
         <CursorPos X="26" Y="2712"/>
-        <UsageCount Value="49"/>
+        <UsageCount Value="53"/>
       </Unit5>
       <Unit6>
         <Filename Value="func.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="func"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="105"/>
+        <TopLine Value="111"/>
         <CursorPos X="13" Y="114"/>
-        <UsageCount Value="49"/>
+        <UsageCount Value="53"/>
       </Unit6>
       <Unit7>
         <Filename Value="fileutils.pas"/>
@@ -79,48 +82,45 @@
         <WindowIndex Value="0"/>
         <TopLine Value="28"/>
         <CursorPos X="21" Y="37"/>
-        <UsageCount Value="49"/>
+        <UsageCount Value="53"/>
       </Unit7>
       <Unit8>
         <Filename Value="cntx.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="cntx"/>
-        <EditorIndex Value="1"/>
+        <EditorIndex Value="0"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="395"/>
-        <CursorPos X="6" Y="402"/>
-        <UsageCount Value="49"/>
+        <TopLine Value="614"/>
+        <CursorPos X="27" Y="624"/>
+        <UsageCount Value="53"/>
         <Loaded Value="True"/>
       </Unit8>
       <Unit9>
         <Filename Value="llvmemit.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="llvmemit"/>
-        <IsVisibleTab Value="True"/>
-        <EditorIndex Value="2"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="50"/>
-        <CursorPos X="1" Y="59"/>
-        <UsageCount Value="49"/>
-        <Loaded Value="True"/>
+        <TopLine Value="143"/>
+        <CursorPos X="71" Y="158"/>
+        <UsageCount Value="53"/>
       </Unit9>
       <Unit10>
         <Filename Value="ptrhashtable.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="ptrhashtable"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="1"/>
+        <TopLine Value="372"/>
         <CursorPos X="36" Y="10"/>
-        <UsageCount Value="49"/>
+        <UsageCount Value="53"/>
       </Unit10>
       <Unit11>
         <Filename Value="hashtable.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="hashtable"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="1"/>
+        <TopLine Value="54"/>
         <CursorPos X="1" Y="1"/>
-        <UsageCount Value="49"/>
+        <UsageCount Value="53"/>
       </Unit11>
       <Unit12>
         <Filename Value="err.pas"/>
@@ -129,12 +129,15 @@
         <WindowIndex Value="0"/>
         <TopLine Value="1"/>
         <CursorPos X="12" Y="5"/>
-        <UsageCount Value="49"/>
+        <UsageCount Value="53"/>
       </Unit12>
       <Unit13>
         <Filename Value="exprh.inc"/>
         <IsPartOfProject Value="True"/>
-        <UsageCount Value="49"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1"/>
+        <CursorPos X="1" Y="1"/>
+        <UsageCount Value="53"/>
       </Unit13>
       <Unit14>
         <Filename Value="E:\Software\lazarus\lcl\lclproc.pas"/>
@@ -183,11 +186,12 @@
       </Unit19>
       <Unit20>
         <Filename Value="parser.pas"/>
+        <IsPartOfProject Value="True"/>
         <UnitName Value="parser"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="109"/>
-        <CursorPos X="12" Y="113"/>
-        <UsageCount Value="8"/>
+        <TopLine Value="1339"/>
+        <CursorPos X="32" Y="450"/>
+        <UsageCount Value="20"/>
       </Unit20>
       <Unit21>
         <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\inc\heaptrc.pp"/>
@@ -200,9 +204,9 @@
       <Unit22>
         <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\inc\systemh.inc"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="805"/>
-        <CursorPos X="61" Y="820"/>
-        <UsageCount Value="5"/>
+        <TopLine Value="244"/>
+        <CursorPos X="3" Y="253"/>
+        <UsageCount Value="10"/>
       </Unit22>
       <Unit23>
         <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\inc\system.inc"/>
@@ -349,19 +353,47 @@
     <General>
       <ActiveWindowIndexAtStart Value="0"/>
     </General>
-    <JumpHistory Count="3" HistoryIndex="2">
+    <JumpHistory Count="10" HistoryIndex="9">
       <Position1>
-        <Filename Value="cntx.pas"/>
-        <Caret Line="395" Column="3" TopLine="392"/>
+        <Filename Value="cupersist.pas"/>
+        <Caret Line="579" Column="20" TopLine="570"/>
       </Position1>
       <Position2>
-        <Filename Value="llvmemit.pas"/>
-        <Caret Line="65" Column="17" TopLine="61"/>
+        <Filename Value="cupersist.pas"/>
+        <Caret Line="126" Column="11" TopLine="117"/>
       </Position2>
       <Position3>
-        <Filename Value="llvmemit.pas"/>
-        <Caret Line="86" Column="31" TopLine="35"/>
+        <Filename Value="cupersist.pas"/>
+        <Caret Line="579" Column="20" TopLine="570"/>
       </Position3>
+      <Position4>
+        <Filename Value="cupersist.pas"/>
+        <Caret Line="128" Column="43" TopLine="123"/>
+      </Position4>
+      <Position5>
+        <Filename Value="cupersist.pas"/>
+        <Caret Line="588" Column="19" TopLine="579"/>
+      </Position5>
+      <Position6>
+        <Filename Value="cupersist.pas"/>
+        <Caret Line="1044" Column="20" TopLine="1035"/>
+      </Position6>
+      <Position7>
+        <Filename Value="cupersist.pas"/>
+        <Caret Line="113" Column="48" TopLine="113"/>
+      </Position7>
+      <Position8>
+        <Filename Value="cupersist.pas"/>
+        <Caret Line="1268" Column="51" TopLine="1259"/>
+      </Position8>
+      <Position9>
+        <Filename Value="cupersist.pas"/>
+        <Caret Line="1919" Column="22" TopLine="1910"/>
+      </Position9>
+      <Position10>
+        <Filename Value="cupersist.pas"/>
+        <Caret Line="1924" Column="22" TopLine="1915"/>
+      </Position10>
     </JumpHistory>
   </ProjectSession>
 </CONFIG>

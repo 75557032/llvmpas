@@ -361,9 +361,9 @@ procedure CheckFunction(Parser: TParser; Func: TFunction);
     end;
     Result := c;
   end;
-var
+(*var
   Data: TCheckData;
-  Cnt: Integer;
+  Cnt: Integer;*)
 begin
   // ºÏ≤Ègoto”Ôæ‰
   ForEach(Func.StartStmt, CheckGoto, Parser);

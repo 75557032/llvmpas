@@ -8,7 +8,7 @@ uses
   {$ENDIF}{$ENDIF}
   Interfaces, // this includes the LCL widgetset
   Forms, Main, llvmemit, ptrhashtable, ast, cntx, cupersist, err, fileutils,
-  func, hashtable, lex;
+  func, hashtable, lex, parser;
 
 {$R *.res}
 

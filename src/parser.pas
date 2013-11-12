@@ -368,7 +368,7 @@ const
     'virtual', 'dynamic', 'abstract', 'override',
     'overload', 'message', 'reintroduce', 'static',
     'inline', 'assembler', 'varargs', 'local', 'dispid',
-    'export', 'near', 'far', 'external', 'forward'
+    'export', 'near', 'far', 'external', 'forward', 'noreturn'
   );
 var
   I: TFunctionModifier;
@@ -447,7 +447,7 @@ function TParser.CheckAssignmentCompatibility(T1, T2: TType): Boolean;
   function IsSameProcType(P1, P2: TProceduralType): Boolean;
   begin
     Result := (P1.ReturnType = P2.ReturnType) and (P1.CallConvention = P2.CallConvention)
-        and (P1.IsOfObject = P2.IsOfObject) and IsSameArgs(P1.Args, P2.Args);
+        and (P1.IsMethodPointer = P2.IsMethodPointer) and IsSameArgs(P1.Args, P2.Args);
   end;
 //type
 //  TBaseType = (btErr, btInt, btFlt, btCur, btEnu, btBol, btStr, btPtr);
@@ -525,7 +525,7 @@ T1 is the IUnknown or IDispatch interface type and T2 is Variant. (The variant's
       case T2.TypeCode of
         typPointer: Result := True;
         typProcedural: begin
-          Result := TProceduralType(T1).IsOfObject = TProceduralType(T2).IsOfObject;
+          Result := TProceduralType(T1).IsMethodPointer = TProceduralType(T2).IsMethodPointer;
           if Result {and FTypedAddress }then // 在$T+状态下，需要检查参数列表
             Result := IsSameProcType(TProceduralType(T1), TProceduralType(T2));
         end;
@@ -4867,12 +4867,12 @@ function TParser.ParseObjectType(const ObjName: string): TObjectType;
   procedure CheckObject(typ: TObjectType);
   var
     i: Integer;
-    sym: TSymbol;
+  //  sym: TSymbol;
   begin
     for i := 0 to typ.Symbols.Count - 1 do
     begin
-      sym := typ.Symbols[i];
-      {case sym.NodeKind of
+      {sym := typ.Symbols[i];
+      case sym.NodeKind of
         nkMethod:
           // 检查是否override;
 
@@ -6435,7 +6435,7 @@ function TParser.ParseTypeDecl(const TypName: string; Parent: TSymbol): TType;
       NextToken;
       Expect(tkObject);
       if CurToken = tkObject then
-        Result.IsOfObject := True;
+        Result.IsMethodPointer := True;
       NextToken;
     end;
 
@@ -6538,6 +6538,8 @@ function TParser.ParseTypeDecl(const TypName: string; Parent: TSymbol): TType;
 
     if T.IsOrdinal then
     begin
+      if not Assigned(T.Parent) then T.Parent := Parent;
+
       case T.TypeCode of
         typSubrange: RangeType := TSubrangeType(T);
         typEnum: RangeType := GetSubrangeType(TEnumType(T));
@@ -6636,14 +6638,6 @@ function TParser.ParseTypeDecl(const TypName: string; Parent: TSymbol): TType;
     NextToken;
   end;
 
-{  procedure NextT;
-  var
-    StateInfo: TParseStateInfo;
-  begin
-    StateSet(psInClass, StateInfo);
-    NextToken;
-    StateRestore(StateInfo);
-  end;}
 begin
 {
 <TypeDecl>		::= <TypeId> '=' <TypeSpec>
@@ -6652,67 +6646,52 @@ begin
   // 分析类型,直到';'或'='出现
 
   case CurToken of
-    tkBraceOpen: begin // enum
-      Result := CreateType(TEnumType);
-      ParseEnumType(TEnumType(Result));
-      TEnumType(Result).MinEnumSize := FMinEnumSize;
-      TEnumType(Result).Update;
-    end;
+    tkBraceOpen:
+      begin // enum
+        Result := CreateType(TEnumType);
+        ParseEnumType(TEnumType(Result));
+        TEnumType(Result).MinEnumSize := FMinEnumSize;
+        TEnumType(Result).Update;
+      end;
 
-    tkCaret: begin  // pointer
-      NextToken;
-      Expect(tkIdentifier);
-      Result := ParsePointerType;
-    end;
+    tkCaret:
+      begin  // pointer
+        NextToken;
+        Expect(tkIdentifier);
+        Result := ParsePointerType;
+      end;
 
     tkIdentifier, tkIntConst, tkHexConst, tkCharConst, tkStrConst:
       Result := ParseType(not (psInVar in FCurStates));
 
-    tkType: begin // My = type Byte;
-      if (psInVar in FCurStates) or (psInField in FCurStates) then
-        Expect(tkIdentifier);
-      NextToken;
-      if CurToken <> tkString then
-        Expect(tkIdentifier);
-      Result := ParseTypeName(True);  // 可以用parseQSym
-    end;
+    tkType:
+      begin // My = type Byte;
+        if (psInVar in FCurStates) or (psInField in FCurStates) then
+          Expect(tkIdentifier);
+        NextToken;
+        if CurToken <> tkString then
+          Expect(tkIdentifier);
+        Result := ParseTypeName(True);  // 可以用parseQSym
+      end;
 
     tkProcedure: Result := ParseProceduralType;
     tkFunction: Result := ParseProceduralType;
     tkRecord: Result := ParseRecordType(TypName, Parent);
-{    tkClass, tkInterface, tkDispInterface, tkObject: begin
-      if psInFunc in FCurStates then
-        ParseError('Local class, interface or object types are not allowed', True);
-      case CurToken of
-        tkClass: begin
-          // 在class中,private等成为关键字,而且可能 class之后就是这些词
-          // 使用NextT防止Scanner把这些词扫描成一般标识符
-          NextT;
-          if CurToken = tkOf then
-            Result := ParseClassRef
-          else
-            Result := ParseClassType(TypName, Parent);
-        end;
 
-        tkInterface, tkDispInterface:
-          Result := ParseInterfaceType(TypName, Parent);
-      else
-        Result := ParseObjectType(TypName);
+    tkString:
+      begin
+        NextToken;
+        if CurToken = tkSquaredBraceOpen then
+          Result := ParseShortString
+        else
+          Result := FContext.FStringType;
       end;
-    end; }
-    tkString: begin
-      NextToken;
-      if CurToken = tkSquaredBraceOpen then
-        Result := ParseShortString
-      else
-        Result := FContext.FStringType;
-    end;
     tkPacked: Result := ParsePackedType;
     tkArray: Result := ParseArrayType;
     tkSet: Result := ParseSetType;
     tkFile: Result := ParseFileType;
-    else
-      Result := nil;
+  else
+    Result := nil;
   end;
 
   if Result = nil then
@@ -6723,7 +6702,7 @@ begin
     Result.Size := FPointerSize
   else if Result.TypeCode = typProcedural then
   begin
-    if TProceduralType(Result).IsOfObject then
+    if TProceduralType(Result).IsMethodPointer then
       Result.Size := FPointerSize * 2
     else
       Result.Size := FPointerSize;
@@ -7093,8 +7072,7 @@ begin
     NotAddSym := False;
     case CurToken of
       tkClass: begin
-        // 在class中,private等成为关键字,而且可能 class之后就是这些词
-        // 使用NextT防止Scanner把这些词扫描成一般标识符
+        // 在class中,private等成为关键字,防止Scanner把这些词扫描成一般标识符
         Scanner.EnableScopeKeyWords(True);
         NextToken;
         if CurToken = tkOf then

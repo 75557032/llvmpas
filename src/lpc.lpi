@@ -91,7 +91,7 @@
   </ProjectOptions>
   <CompilerOptions>
     <Version Value="11"/>
-    <PathDelim Value="\"/>
+    <PathDelim Value="/"/>
     <Target>
       <Filename Value="../bin/lpc"/>
     </Target>
