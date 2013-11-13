@@ -138,9 +138,9 @@ type
     procedure EmitCall(const func, retVar, cc, fn_attr: string;
                        const typs, args: array of string); overload;
 
-    function EmitCall(Func: TFunctionDecl;
+    procedure EmitCall(Func: TFunctionDecl;
                       const Typs, Args: array of string;
-                      const RetVar: string): string; overload;
+                      const RetVar: string); overload;
 
     function EmitInvoke(const Inv: string): string;
     function TempVar: string;
@@ -165,6 +165,7 @@ type
     procedure EmitError(const Coord: TAstNodeCoord; const Msg: string; const Args: array of const); overload;
 
   protected
+    procedure EmitRtti_Class(T: TClassType);
     procedure EmitExternals;
     procedure EmitIntrinsics;
 //    procedure EmitSysRoutines;
@@ -950,6 +951,8 @@ var
   begin
     if FCurCntx.ExitLabel = '' then
       FCurCntx.ExitLabel := 'quit';
+    // todo 1: 退出之前需要先执行finally
+    
     WriteCode('br label %quit');
   end;
 var
@@ -1040,9 +1043,9 @@ begin
   end;
 end; }
 
-function TCodeGen.EmitCall(Func: TFunctionDecl;
+procedure TCodeGen.EmitCall(Func: TFunctionDecl;
                            const Typs, Args: array of string;
-                           const RetVar: string): string;
+                           const RetVar: string);
 var
   argStr, lpad, s, nextLabel: string;
   i: Integer;
@@ -1984,22 +1987,40 @@ var
   LV, ArgV: TVarInfo;
   ArgE: TExpr;
   Arg: TArgument;
-  RetVar, RetTyStr, ArgStr, FunName, SelfPtr, Va1, Va2: string;
-  IsMeth, RetConv, IsSafecall, IsNested: Boolean;
+  RetVar, RetTyStr, ArgStr,
+  FunName, SelfPtr, {FunPtr, }Va1, Va2: string;
+  ParentT: TType;
+  IsMeth, IsVirtual, IsSafecall,
+  IsNested, IsCtor, IsDtor, RetConv: Boolean;
   CC: TCallingConvention;
   parentCntx: TEmitFuncContext;
 begin
-// retconv需要传Result
-// method需要传入Self
-// 构造函数,析构函数有额外参数传入
+// 1.某些返回类型需要把返回结果当成最后一个参数返回,如string
+// 这里需要传入赋值语句的左表达式.
+
+// 2.method需要传入Self
+// 3.构造函数,析构函数有额外参数传入
 
   Count := FunT.CountOfArgs;
   IsMeth := FunT.IsMethodPointer;
   IsSafecall := FunT.CallConvention = ccSafeCall;
-  IsNested := Assigned(Fun) and (Fun.Level > 0);
   RetConv := Assigned(FunT.ReturnType)
-              and IsSpecialType(FunT.ReturnType)
-              or IsSafecall;
+              and IsSpecialType(FunT.ReturnType) or IsSafecall;
+
+  if Assigned(Fun) then
+  begin
+    IsNested := Fun.Level > 0;
+    IsVirtual := (Fun.NodeKind = nkMethod) and (fmVirtual in Fun.Modifiers);
+    IsCtor := (Fun.NodeKind = nkMethod) and (TMethod(Fun).MethodKind = mkConstructor);
+    IsDtor := (Fun.NodeKind = nkMethod) and (TMethod(Fun).MethodKind = mkDestructor);
+  end
+  else
+  begin
+    IsNested := False;
+    IsVirtual := False;
+    IsCtor := False;
+    IsDtor := False;
+  end;
 
 {
   obj.test;
@@ -2016,23 +2037,100 @@ begin
     // get Self pointer
     if IsMeth then
     begin
+      Assert(Fun.Parent.NodeKind = nkType, 'Method parent err');
+
+      ParentT := TType(Fun.Parent);
       if E.Left.OpCode = opSYMBOL then
-        SelfPtr := '%.Self'
+      begin
+        LV.Name := '%.Self';
+        LV.TyStr := 'i8*';
+        LV.States := [];
+//        SelfPtr := '%.Self';
+      end
       else if E.Left.OpCode = opMEMBER then
       begin
         EmitExpr(TBinaryExpr(E.Left).Left, LV);
-        if (Fun.Parent.NodeKind = nkType)
-            and (TType(Fun.Parent).TypeCode in [typInterface, typDispInterface, typClass]) then
-        begin
+        if ParentT.TypeCode in [typInterface, typDispInterface, typClass] then
           EmitOp_VarLoad(LV);
+        EnsurePtr(LV.TyStr, 'Instance of method is not ptr');
+      end
+      else
+        Assert(False, 'EmitFuncCall, invalid left node'); // 到这里应该不可能的
+
+      // instance.classProc;
+      if (ParentT.TypeCode = typClass) and (saClass in Fun.Attr)
+          and not (TBinaryExpr(E.Left).Left.IsTypeSymbol) then
+      begin
+        // 以实例调用类方法,先取出它的vmt
+        //
+        if LV.TyStr <> 'i8**' then
+        begin
+          Va1 := TempVar;
+          WriteCode('%s = bitcast %s %s to i8**', [
+            Va1, LV.TyStr, LV.Name
+          ]);
+        end
+        else
+          Va1 := LV.Name;
+        Va2 := TempVar;
+        WriteCode('%s = load i8** %s', [Va2, Va1]);
+        LV.Name := Va2;
+        LV.TyStr := 'i8*';
+        LV.States := [];
+      end;
+
+      if IsVirtual or (ParentT.TypeCode in [typInterface, typDispInterface]) then
+      begin
+      // 加载虚函数
+        if not (saClass in Fun.Attr) then
+        begin
+          if LV.TyStr <> 'i8***' then
+          begin
+            Va1 := TempVar;
+            WriteCode('%s = bitcast %s %s to i8***', [
+              Va1, LV.TyStr, LV.Name
+            ]);
+          end
+          else
+            Va1 := LV.Name;
+
+          // load vmt
+          Va2 := TempVar;
+          WriteCode('%s = load i8*** %s', [Va2, Va1]);
+        end
+        else
+        begin
+          Va2 := TempVar;
+          WriteCode('%s = bitcast %s %s to i8**', [Va2, LV.TyStr, LV.Name]);
         end;
-        EnsurePtr(LV.TyStr, 'Instance not ptr');
+
+        // 至此, Va2 已经是vmt, type is i8**
+        Va1 := TempVar;
+        WriteCode('%s = getelementptr i8** %s, i32 0, i32 %d', [
+          Va1, Va2, TMethod(Fun).VTIndex
+        ]);
+
+        Va2 := TempVar;
+        WriteCode('%s = load i8** %s', [Va2, Va1]);
+
+        // va2 is func ptr, type is i8*, cast it to function type
+        Va1 := TempVar;
+        WriteCode('%s = bitcast i8* %s to %s', [
+          Va1, Va2, Self.ProcTypeStr(FunT)
+        ]);
+
+        FunName := Va1;
+      end;
+
+      if LV.TyStr <> 'i8*' then
+      begin
         Va1 := TempVar;
         WriteCode('%s = bitcast %s %s to i8*', [Va1, LV.TyStr, LV.Name]);
         SelfPtr := Va1;
       end
       else
-        Assert(False, 'EmitFuncCall, invalid left node'); // 到这里应该不可能的
+        SelfPtr := LV.Name;
+
     end;
   end
   else
@@ -2055,8 +2153,14 @@ begin
       ]);
       Va2 := TempVar;
       WriteCode('%s = load i8** %s', [Va2, Va1]);
-      LV.Name := Va2;
-      LV.TyStr := 'i8*';
+
+      LV.Name := TempVar;
+      LV.TyStr := Self.ProcTypeStr(FunT);
+      WriteCode('%s = bitcast i8* %s to %s', [
+        LV.Name, Va2, LV.TyStr
+      ]);
+
+      FunName := LV.Name;
     end
     else
     begin
@@ -2070,7 +2174,9 @@ begin
   if IsMeth then Inc(Count);
   if RetConv then Inc(Count);
   if IsNested then Inc(Count);
-
+  if IsCtor then Inc(Count, 2);
+  if IsDtor then Inc(Count);
+  
   if Count > 0 then
   begin
     if IsMeth then
@@ -2638,7 +2744,7 @@ begin
 //  if lpad = '' then
 
 //    Result := Format('tail call %s %s Func
-
+   Result := '';
 end;
 
 procedure TCodeGen.EmitModule(M: TModule; Cntx: TCompileContext);
@@ -2713,7 +2819,12 @@ begin
   begin
     Sym := FModule.Symbols[i];
     case Sym.NodeKind of
-      nkType: EmitTypeDecl(TType(Sym));
+      nkType:
+        begin
+          EmitTypeDecl(TType(Sym));
+          if TType(Sym).TypeCode = typClass then
+            EmitRtti_Class(TClassType(Sym));
+        end;
       nkVariable: EmitGlobalVarDecl(TVariable(Sym));
       nkFunc, nkMethod, nkExternalFunc: EmitFunc(TFunctionDecl(Sym));
     end;
@@ -2723,7 +2834,12 @@ begin
   begin
     Sym := FModule.InternalSymbols[i];
     case Sym.NodeKind of
-      nkType: EmitTypeDecl(TType(Sym));
+      nkType:
+        begin
+          EmitTypeDecl(TType(Sym));
+          if TType(Sym).TypeCode = typClass then
+            EmitRtti_Class(TClassType(Sym));
+        end;
       nkVariable: EmitGlobalVarDecl(TVariable(Sym));
       nkFunc, nkMethod, nkExternalFunc: EmitFunc(TFunctionDecl(Sym));
     end;
@@ -3551,7 +3667,7 @@ end;
 
 procedure TCodeGen.EmitOp_LoadRef(Ref: TSymbol; out Result: TVarInfo);
 
-  procedure LoadOutter;
+  procedure LoadOutterArg;
   var
     Va: string;
     parentCntx: TEmitFuncContext;
@@ -3591,6 +3707,19 @@ procedure TCodeGen.EmitOp_LoadRef(Ref: TSymbol; out Result: TVarInfo);
       Result.Name, parentCntx.FrameTyStr, TVariable(Ref).Level, TVariable(Ref).Index
     ]);
   end;
+
+  procedure LoadClassVmt(T: TClassType);
+  var
+    QualID: string;
+  begin
+    QualID := MangledName(T);
+    // 从19 开始是类的vmt。之前是系统保留的
+    Result.Name := Format('getelementptr(%%%s.$.vmt* @%s.$vmt, i32 0, i32 19)', [
+      QualID, QualID
+    ]);
+    Result.TyStr := 'i8**';
+    Result.States := [];
+  end; 
 var
   T: TType;
 begin
@@ -3613,14 +3742,13 @@ begin
   参数:
     <arg>.addr
   Self:
-    Self
+    %.Self
 }
   case Ref.NodeKind of
     nkArgument:
-      //if asNestRef in TArgument(Ref).States then
       if TArgument(Ref).Level <> FCurCntx.Func.Level then
       begin
-        LoadOutter;
+        LoadOutterArg;
       end
       else
       begin
@@ -3664,6 +3792,7 @@ begin
         //Assert(FCurCntx.Func.Parent
         Assert(False); 
       end;
+
     nkConstant:
       begin
         T := TConstant(Ref).ConstType;
@@ -3683,7 +3812,14 @@ begin
           Result.TyStr := TypeStr(T);
         end
         else
-          Assert(False);
+          Assert(False);  // todo 1: 以后再加
+      end;
+
+    nkType:
+      case TType(Ref).TypeCode of
+        typClass: LoadClassVmt(TClassType(Ref));
+      else
+        Assert(False, 'EmitOp_LoadRef, nkType');
       end;
   else
     Assert(False, 'EmitOp_LoadRef');
@@ -3930,6 +4066,19 @@ br i1 %flag, label %Ok, label %Fail
   WriteCode('unreachable');
   WriteLabel(OkLabel);
 //  Include(FSysRoutines, sys_range_check);
+end;
+
+procedure TCodeGen.EmitRtti_Class(T: TClassType);
+var
+  QualID: string;
+begin
+  QualID := MangledName(T);
+  EmitAStr(True, QualID + '.$name', T.Name);
+  // vmt
+  WriteDecl('%%%s.$.vmt = type [%d x i8*]', [QualID, T.VmtEntries + 19]);
+  WriteDecl('@%s.$vmt = global %%%s.$.vmt zeroinitializer', [
+    QualID, QualID
+  ]);
 end;
 
 procedure TCodeGen.EmitStmt(Stmt: TStatement);

@@ -18,6 +18,7 @@ type
 	tmyobj = class
 	public
 		procedure test;
+		class procedure classProc;
 	end;
 	
 	tobj2 = object
@@ -31,12 +32,18 @@ procedure tmyobj.test;
 begin
 end;
 
+class procedure tmyobj.classProc;
+begin
+end;
+
 procedure tobj2.test;
 begin
 end;
 
 procedure test_meth(a: tmyobj; const b: tobj2; c: TMethPtr);
 begin
+	TMyObj.classProc;
+	a.classProc;
 	a.test;
 	b.test;
 	c(2);
@@ -62,8 +69,7 @@ end;
 
 function test_arg1(a: Integer): Integer;
 begin
-{$r+}
-{$q+}
+{$r+,q+}
 	result := a + 1;
 {$r-}
 {$q-}

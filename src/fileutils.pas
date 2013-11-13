@@ -11,8 +11,10 @@ procedure GetFileTimeStamp(Handle: THandle; out TimeStamp: TFileTimeStamp); over
 
 implementation
 uses Windows;
+{$warnings off}
+{$hints off}
 
-procedure ToTimeStamp(const T: TSystemTime; var TimeStamp: TFileTimeStamp);
+procedure ToTimeStamp(const T: TSystemTime; out TimeStamp: TFileTimeStamp);
 begin
   TimeStamp.Date := T.wYear * 10000 + T.wMonth * 100 + T.wDay;
   TimeStamp.Time := T.wHour * 10000000 + T.wMinute * 100000 + T.wSecond * 1000 + T.wMilliseconds;

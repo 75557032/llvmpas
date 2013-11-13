@@ -692,6 +692,7 @@ type
     Interfaces: TList;
     DefaultProp: TProperty;
     ObjectSize: Int64;    // Instance Size
+    VmtEntries: Integer;  // vmt条目个数
     MR: TMethodResolution;
     GlobalAlignSize: Byte; // 1,2,4,8,16 声明该类时的Align
     ClassAttr: TClassAttributes;
@@ -1165,7 +1166,7 @@ type
   protected
     procedure CreateProceduralType; virtual;
   public
-    ID: Integer;
+    ID: Integer;     // 编号,用于区别重载方法
     Args: TList;     // TArgument
     ReturnType: TType;   // nil 表示procedure
     NextOverload: TFunctionDecl;  // overload chains
@@ -3789,7 +3790,7 @@ var
       Offset := F.FieldType.Size;
   end;
 var
-  i: Integer;
+  i, Vmt: Integer;
   Offset: Int64;
   Sym: TSymbol;
 begin
@@ -3824,6 +3825,23 @@ begin
     ObjectSize := (Offset + MaxAlign - 1) and not (MaxAlign - 1)
   else
     ObjectSize := Offset;
+
+  if Base <> nil then
+    Vmt := Base.VmtEntries
+  else
+    Vmt := 0;
+  for i := 0 to Symbols.Count - 1 do
+  begin
+    Sym := Symbols[i];
+    if not (saStatic in Sym.Attr) and (Sym.NodeKind = nkMethod)
+        and (fmVirtual in TFunction(Sym).Modifiers) then
+    begin
+      TMethod(Sym).VTIndex := Vmt;
+      Inc(Vmt);
+    end;
+  end;
+  // todo 1: 需要再加上接口方法
+  VmtEntries := Vmt;
 end;
 
 { TSubrangeType }
@@ -4205,6 +4223,7 @@ begin
     FSize := (Offset + MaxAlign - 1) and not (MaxAlign - 1)
   else
     FSize := Offset;
+  if FSize = 0 then FSize := 1;
 end;
 
 { TFileType }
@@ -4726,6 +4745,7 @@ end;
 
 procedure TFunctionDecl.CreateProceduralType;
 begin
+// todo 1: 想法：这些附带类型都要有个名称，便于保存
   FProcType := TProceduralType.Create;
   if Self.Args <> nil then
   begin

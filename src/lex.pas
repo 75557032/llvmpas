@@ -2457,6 +2457,7 @@ begin
       Error(SErrInvalidDirectiveParam, True);
     Inc(FCurLine);
     Result := FCurLine[0] = ',';
+    if Result then Inc(FCurLine); // skip ','
   end
   else
   begin

@@ -698,6 +698,7 @@ const
     WriteRef(Sym.ReturnType);
     WriteUInt32(Integer(Sym.Modifiers));
     WriteUInt32(Byte(Sym.CallConvention));
+    WriteUInt32(Sym.ID);
     WriteArgs(Sym.Args);
     case Sym.NodeKind of
       nkMethod: begin
@@ -1426,6 +1427,7 @@ function TCUReader.GetSymbol(): TSymbol;
     GetRef(Result, @Result.ReturnType, fkAddr, [nkType], []);
     Result.Modifiers := TFunctionModifiers(Integer(ReadUInt32));
     Result.CallConvention := TCallingConvention(Byte(ReadUInt32));
+    Result.ID := ReadUInt32;
     i := ReadUInt32;
     if i > 0 then
     begin

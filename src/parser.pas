@@ -2280,7 +2280,19 @@ begin
       tkVar, tkThreadVar: Self.ParseVarSection(Parent);
       tkConst: Self.ParseConstSection(Parent);
       tkResourceString: Self.ParseResStringSection(Parent);
-      tkProcedure, tkFunction: Self.ParseFunction(Parent);
+      tkProcedure, tkFunction, tkConstructor, tkDestructor: Self.ParseFunction(Parent);
+
+      tkClass:
+        begin
+          NextToken;
+          if CurToken in [tkProcedure, tkFunction] then
+          begin
+            Include(Self.FCurStates, psInClassPrefix);
+            Self.ParseFunction(FModule);
+          end
+          else
+            ParseError(SErr_ExpectProcOrFunc, True);
+        end;
       tkLabel: Self.ParseLabelSection(Parent);
     else
       Expect(tkBegin);
@@ -3825,7 +3837,10 @@ begin
     if (Func <> nil) then
     begin
       if CheckOverloads(Func, TFunctionDecl(Result)) then
+      begin
+        TFunctionDecl(Result).ID := Func.ID + 1;
         Func.AddOverload(TFunctionDecl(Result));
+      end;
       Result.Parent := Parent;
     end
     else begin
@@ -3842,7 +3857,10 @@ begin
     if Func <> nil then
     begin
       if CheckOverloads(Func, TFunctionDecl(Result)) then
+      begin
+        TFunctionDecl(Result).ID := Func.ID + 1;
         Func.AddOverload(TFunctionDecl(Result));
+      end;
       Result.Parent := Parent;
     end
     else begin
@@ -3862,6 +3880,7 @@ begin
         Result := ToMethod(FHeader);
         if Func <> nil then
         begin
+          TFunctionDecl(Result).ID := Func.ID + 1;
           Func.AddOverload(TFunctionDecl(Result));
           Result.Parent := Func.Parent;
         end;
@@ -3883,7 +3902,10 @@ begin
         if Func <> nil then
         begin
           if CheckOverloads(Func, TFunctionDecl(Result)) then
+          begin
+            TFunctionDecl(Result).ID := Func.ID + 1;
             Func.AddOverload(TFunctionDecl(Result));
+          end;
           Result.Parent := Parent;
         end
         else begin
@@ -4351,7 +4373,7 @@ begin
   begin
     case CurToken of
       tkType: Self.ParseTypeSection(FModule);
-      tkVar: Self.ParseVarSection(FModule);
+      tkVar, tkThreadVar: Self.ParseVarSection(FModule);
       tkConst: Self.ParseConstSection(FModule);
       tkResourceString: Self.ParseResStringSection(FModule);
       tkProcedure, tkFunction, tkConstructor, tkDestructor: Self.ParseFunction(FModule);

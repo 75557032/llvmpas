@@ -21,7 +21,7 @@
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="Main"/>
-        <EditorIndex Value="2"/>
+        <EditorIndex Value="3"/>
         <WindowIndex Value="0"/>
         <TopLine Value="107"/>
         <CursorPos X="18" Y="113"/>
@@ -32,11 +32,10 @@
         <Filename Value="cupersist.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="cupersist"/>
-        <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="135"/>
-        <CursorPos X="52" Y="150"/>
+        <TopLine Value="138"/>
+        <CursorPos X="42" Y="141"/>
         <UsageCount Value="53"/>
         <Loaded Value="True"/>
       </Unit2>
@@ -80,8 +79,8 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="fileutils"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="28"/>
-        <CursorPos X="21" Y="37"/>
+        <TopLine Value="6"/>
+        <CursorPos X="48" Y="17"/>
         <UsageCount Value="53"/>
       </Unit7>
       <Unit8>
@@ -99,10 +98,13 @@
         <Filename Value="llvmemit.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="llvmemit"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="2"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="143"/>
-        <CursorPos X="71" Y="158"/>
+        <TopLine Value="2738"/>
+        <CursorPos X="17" Y="2747"/>
         <UsageCount Value="53"/>
+        <Loaded Value="True"/>
       </Unit9>
       <Unit10>
         <Filename Value="ptrhashtable.pas"/>
@@ -140,51 +142,6 @@
         <UsageCount Value="53"/>
       </Unit13>
       <Unit14>
-        <Filename Value="E:\Software\lazarus\lcl\lclproc.pas"/>
-        <UnitName Value="LCLProc"/>
-        <WindowIndex Value="0"/>
-        <TopLine Value="31"/>
-        <CursorPos X="66" Y="42"/>
-        <UsageCount Value="4"/>
-      </Unit14>
-      <Unit15>
-        <Filename Value="E:\Software\lazarus\components\lazutils\fileutil.pas"/>
-        <UnitName Value="FileUtil"/>
-        <WindowIndex Value="0"/>
-        <TopLine Value="14"/>
-        <CursorPos X="1" Y="1"/>
-        <UsageCount Value="4"/>
-      </Unit15>
-      <Unit16>
-        <Filename Value="fileutil.pas"/>
-        <UnitName Value="fileutil"/>
-        <WindowIndex Value="0"/>
-        <TopLine Value="1"/>
-        <CursorPos X="15" Y="1"/>
-        <UsageCount Value="4"/>
-      </Unit16>
-      <Unit17>
-        <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\objpas\classes\classesh.inc"/>
-        <WindowIndex Value="0"/>
-        <TopLine Value="688"/>
-        <CursorPos X="14" Y="697"/>
-        <UsageCount Value="4"/>
-      </Unit17>
-      <Unit18>
-        <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\objpas\classes\stringl.inc"/>
-        <WindowIndex Value="0"/>
-        <TopLine Value="1237"/>
-        <CursorPos X="3" Y="1243"/>
-        <UsageCount Value="4"/>
-      </Unit18>
-      <Unit19>
-        <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\i386\i386.inc"/>
-        <WindowIndex Value="0"/>
-        <TopLine Value="1596"/>
-        <CursorPos X="1" Y="1605"/>
-        <UsageCount Value="4"/>
-      </Unit19>
-      <Unit20>
         <Filename Value="parser.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="parser"/>
@@ -192,6 +149,51 @@
         <TopLine Value="1339"/>
         <CursorPos X="32" Y="450"/>
         <UsageCount Value="20"/>
+      </Unit14>
+      <Unit15>
+        <Filename Value="E:\Software\lazarus\lcl\lclproc.pas"/>
+        <UnitName Value="LCLProc"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="31"/>
+        <CursorPos X="66" Y="42"/>
+        <UsageCount Value="4"/>
+      </Unit15>
+      <Unit16>
+        <Filename Value="E:\Software\lazarus\components\lazutils\fileutil.pas"/>
+        <UnitName Value="FileUtil"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="14"/>
+        <CursorPos X="1" Y="1"/>
+        <UsageCount Value="4"/>
+      </Unit16>
+      <Unit17>
+        <Filename Value="fileutil.pas"/>
+        <UnitName Value="fileutil"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1"/>
+        <CursorPos X="15" Y="1"/>
+        <UsageCount Value="4"/>
+      </Unit17>
+      <Unit18>
+        <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\objpas\classes\classesh.inc"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="688"/>
+        <CursorPos X="14" Y="697"/>
+        <UsageCount Value="4"/>
+      </Unit18>
+      <Unit19>
+        <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\objpas\classes\stringl.inc"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1237"/>
+        <CursorPos X="3" Y="1243"/>
+        <UsageCount Value="4"/>
+      </Unit19>
+      <Unit20>
+        <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\i386\i386.inc"/>
+        <WindowIndex Value="0"/>
+        <TopLine Value="1596"/>
+        <CursorPos X="1" Y="1605"/>
+        <UsageCount Value="4"/>
       </Unit20>
       <Unit21>
         <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\inc\heaptrc.pp"/>
@@ -353,7 +355,7 @@
     <General>
       <ActiveWindowIndexAtStart Value="0"/>
     </General>
-    <JumpHistory Count="10" HistoryIndex="9">
+    <JumpHistory Count="14" HistoryIndex="13">
       <Position1>
         <Filename Value="cupersist.pas"/>
         <Caret Line="579" Column="20" TopLine="570"/>
@@ -394,6 +396,22 @@
         <Filename Value="cupersist.pas"/>
         <Caret Line="1924" Column="22" TopLine="1915"/>
       </Position10>
+      <Position11>
+        <Filename Value="llvmemit.pas"/>
+        <Caret Line="158" Column="71" TopLine="143"/>
+      </Position11>
+      <Position12>
+        <Filename Value="llvmemit.pas"/>
+        <Caret Line="2023" Column="25" TopLine="1982"/>
+      </Position12>
+      <Position13>
+        <Filename Value="llvmemit.pas"/>
+        <Caret Line="1991" Column="31" TopLine="1982"/>
+      </Position13>
+      <Position14>
+        <Filename Value="llvmemit.pas"/>
+        <Caret Line="1174" Column="3" TopLine="1165"/>
+      </Position14>
     </JumpHistory>
   </ProjectSession>
 </CONFIG>

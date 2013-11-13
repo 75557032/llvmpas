@@ -47,6 +47,7 @@ const
   SErr_ExpectMethod = 'Method expected';
   SErr_ExpectStructType = 'Type class, record, interface, object expected';
   SErr_ExpectIntfType = 'Interface type expected';
+  SErr_ExpectClassType = 'Class typ expected';
   SErr_ExpectExpression = 'Expression expected';
   SErr_IntfMethodNotImpl = 'Interface method %s not implemented';
   SErr_ImplMethodDiffers = 'Implemented method %s is differs from interface''s';

@@ -2122,7 +2122,18 @@ type
 
         nkFunc, nkMethod, nkExternalFunc: begin
           CheckArgs(TFunctionDecl(Ref^), bin);
-          bin.Typ := TFunctionDecl(Ref^).ReturnType;
+          if (Ref.NodeKind = nkMethod) and (TMethod(Ref).MethodKind = mkConstructor) then
+          begin
+            if Ref.Parent.NodeKind <> nkType then
+              ParseError(bin.Coord, SErr_ExpectStructType)
+            else if TType(Ref.Parent).TypeCode <> typClass then
+              ParseError(bin.Coord, SErr_ExpectClassType)
+            else
+              bin.Typ := TType(Ref.Parent);
+          end
+          else
+            bin.Typ := TFunctionDecl(Ref^).ReturnType;
+
           if bin.Typ = nil then
             if bin.Parent <> nil then
               bin.Typ := FContext.FAnytype
@@ -2309,11 +2320,11 @@ type
         // Var,const, arg, field, 如果类型是procedure,则需要检查是函数调用还是当成变量
         nkVariable, nkArgument, nkConstant, nkField, nkProperty, nkIntfProperty: begin
           case Ref.NodeKind of
-            nkVariable: Sym.Typ := TVariable(Ref).VarType;
-            nkArgument: Sym.Typ := TArgument(Ref).ArgType;
-            nkConstant: Sym.Typ := TConstant(Ref).ConstType;
-            nkField: Sym.Typ := TField(Ref).FieldType;
-            nkProperty: Sym.Typ := TProperty(Ref).PropType;
+            nkVariable:     Sym.Typ := TVariable(Ref).VarType;
+            nkArgument:     Sym.Typ := TArgument(Ref).ArgType;
+            nkConstant:     Sym.Typ := TConstant(Ref).ConstType;
+            nkField:        Sym.Typ := TField(Ref).FieldType;
+            nkProperty:     Sym.Typ := TProperty(Ref).PropType;
             nkIntfProperty: Sym.Typ := TIntfProperty(Ref).PropType;
           end;
 
