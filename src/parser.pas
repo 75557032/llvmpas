@@ -38,6 +38,7 @@ type
     CallConvention: TCallingConvention;
     Hints: TMemberHints;
     MethodKind: TMethodKind;
+    ObjectKind: TObjectKind;
     ClassPrefix: Boolean;
 
     constructor Create;
@@ -2555,6 +2556,8 @@ function TParser.ParseClassType(const TypName: string;
       end;
     if not Ok then
       ParseError('Overrided function not matched');
+    M.VTIndex := M2.VTIndex;
+    Include(M.Modifiers, fmVirtual);
   end;
 
   function IsSameMethodDecl(F1, F2: TMethod): Boolean;
@@ -3046,6 +3049,8 @@ begin
     // inherited 优先度比较高:
     // inherited BaseMeth[1];  =>
     //   (inherited BaseMeth)[1];
+
+    // todo: 这里需要修改
     NextToken;
     Expect(tkIdentifier);
     Result := TSymbolExpr(CreateSymbolExpr(CurTokenString));
@@ -3104,11 +3109,13 @@ begin
 
         NextToken;
       end;
+      
       tkCaret: begin
         L := Result;
         Result := CreateUnaryExpr(opINST, L);
         NextToken;
       end;
+
       tkBraceOpen: begin // 函数调用或类型转换
         L := Result;
         Result := CreateBinaryExpr(opCALL); // 暂定为函数调用
@@ -3125,6 +3132,7 @@ begin
         Expect(tkBraceClose);
         NextToken;
       end;
+
       tkSquaredBraceOpen: begin
         NextToken;
         L := Result;
@@ -3141,8 +3149,8 @@ begin
         Expect(tkSquaredBraceClose);
         NextToken;
       end;
-      else
-        Break;
+    else
+      Break;
     end;
   end;
 end;
@@ -3503,12 +3511,6 @@ end;
 
 function TParser.ParseFunction(Parent: TSymbol): TSymbol;
 
-//  function InImplSect: Boolean;
-//  begin
-//    Result := (psInImplSect in FCurStates) and
-//              ([psInClass, psInObject, psInRecord, psInFunc] * FCurStates = []);
-//  end;
-
   function FindExists(const S: string): TFunctionDecl;
   var
     E: TSymbol;
@@ -3524,6 +3526,7 @@ function TParser.ParseFunction(Parent: TSymbol): TSymbol;
 
     function SameArg(A1, A2: TArgument): Boolean;
     begin
+      // todo 1: 要比较函数名
       Result := (A1.ArgType = A2.ArgType) and
                 (A1.Modifier = A2.Modifier) and
                 (A1.ArgKind = A2.ArgKind);
@@ -3552,10 +3555,10 @@ function TParser.ParseFunction(Parent: TSymbol): TSymbol;
         Result := F1.CallConvention = F2.CallConvention;
     end;
   begin
-    Result := (F1.ReturnType = F2.ReturnType) and
-            SameArgs and
-            SameCallConv and
-            (F2.ClassPrefix = (saClass in F1.Attr));
+    Result := ((F2.MethodKind = mkConstructor) or (F1.ReturnType = F2.ReturnType))
+            and SameArgs
+            and SameCallConv
+            and (F2.ClassPrefix = (saClass in F1.Attr));
   end;
 
 {  function FindProperDecl(Func: TFunctionDecl; Header: TFunctionHeader): TFunctionDecl;
@@ -3626,6 +3629,7 @@ function TParser.ParseFunction(Parent: TSymbol): TSymbol;
     for I := 1 to Header.CountOfNames - 1 do
     begin
       if Assigned(E) and (E.NodeKind = nkType) then
+      begin
         case TType(E).TypeCode of
           typClass: E := TClassType(E).FindCurSymbol(Header.Names[I]);
           typRecord: E := TRecordType(E).FindSymbol(Header.Names[I]);
@@ -3633,6 +3637,7 @@ function TParser.ParseFunction(Parent: TSymbol): TSymbol;
         else
           ParseError(SErr_UndeclaredIdent, [Header.Names[I]], True);
         end
+      end
       else
         Break;
     end;
@@ -3667,17 +3672,20 @@ function TParser.ParseFunction(Parent: TSymbol): TSymbol;
     Func.CallConvention := Header.CallConvention;
 
     case Func.NodeKind of
-      nkExternalFunc: begin
-        TExternalFunction(Func).FileName := Header.FileName;
-        TExternalFunction(Func).RoutineName := Header.RoutineName;
-        TExternalFunction(Func).RoutineNo := Header.RoutineNo;
-      end;
+      nkExternalFunc:
+        begin
+          TExternalFunction(Func).FileName := Header.FileName;
+          TExternalFunction(Func).RoutineName := Header.RoutineName;
+          TExternalFunction(Func).RoutineNo := Header.RoutineNo;
+        end;
 
-      nkMethod: begin
-        TMethod(Func).MsgNo := Header.MsgNo;
-        TMethod(Func).MethodKind := Header.MethodKind;
-        TMethod(Func).DispID := Header.MsgNo;
-      end;
+      nkMethod:
+        begin
+          TMethod(Func).MsgNo := Header.MsgNo;
+          TMethod(Func).MethodKind := Header.MethodKind;
+          TMethod(Func).ObjectKind := Header.ObjectKind;
+          TMethod(Func).DispID := Header.MsgNo;
+        end;
     end;
   end;
 
@@ -3803,6 +3811,7 @@ var
   Func: TFunctionDecl;
   OldFunc: TFunction;
   OldParent: TSymbol;
+  ParentTyp: TType;
   StateInfo: TParseStateInfo;
   ClassPrefix: Boolean;
 begin
@@ -3825,7 +3834,24 @@ begin
     Exit;
   end;
 
-  // todo 1: 函数实现之处，参数列表可省略。如果有overload 则不行
+  // todo 2: 函数实现之处，参数列表可省略。如果有overload 则不行
+  // todo 2: 这里的实现和fpc的$mode objpas相同,即实现部分不能省略参数.以后要兼容delphi
+
+  if Parent.NodeKind = nkType then
+    ParentTyp := TType(Parent)
+  else
+    ParentTyp := nil;
+
+  if Assigned(ParentTyp) then
+  begin
+    case ParentTyp.TypeCode of
+      typClass:  FHeader.ObjectKind := okClass;
+      typObject: FHeader.ObjectKind := okObject;
+      typRecord: FHeader.ObjectKind := okRecord;
+    end;
+    if FHeader.MethodKind = mkConstructor then
+      FHeader.ReturnType := TType(ParentTyp);
+  end;
 
   // 找到已经声明的
   if FCurStates * [psInClass, psInRecord, psInObject, psInIntf, psInDispIntf] <> [] then
@@ -3846,6 +3872,13 @@ begin
     else begin
       AddSymbol(Result);
     end;
+
+    // 分析interface/dispinterface时不会对constructor/destructor进行分析
+  {  if (FHeader.MethodKind in [mkConstructor, mkDestructor])
+      and Assigned(ParentTyp) and not (ParentTyp.TypeCode in [typClass, typObject, typRecord]) then
+    begin
+      ParseError(Result.Coord, SErr_IntfNotAllowCtorDtor);
+    end;}
     Include(TFunctionDecl(Result).Modifiers, fmForward);
   end
   else if psInIntfSect in FCurStates then
@@ -3870,9 +3903,10 @@ begin
   end
   else
   begin
-  // todo 1: 要考虑方法已经实现，又给一次实现的错误代码
+  // todo 2: 要考虑方法已经实现，又给一次实现的错误代码
     Assert(psInImplSect in FCurStates);
-    if FHeader.CountOfNames > 1 then begin
+    if FHeader.CountOfNames > 1 then
+    begin
       // 方法
       if FindMethodDecl(Func, FHeader) then
         Result := Func   // todo 1: 要考虑这个Func已经实现过了
@@ -3889,14 +3923,17 @@ begin
       // 假如存在多个声明,但都不符合,则报错,但创建一个新方法,以便继续分析
       Exclude(TFunctionDecl(Result).Modifiers, fmForward);
     end
-    else begin
-      // 假如找出多个声明,但不符合,则创建新的函数,这不是错误
+    else
+    begin
+      // 假如找出多个声明,但不符合,则创建新的函数,
+      // 这是implementation部分定义的新函数,不是错误
       if FindFuncDecl(Func, FHeader) then
       begin
         Result := Func;
         Exclude(TFunctionDecl(Result).Modifiers, fmForward);
       end
-      else begin
+      else
+      begin
         Result := ToFunc(FHeader);
       //  Result.IsInternal := True;
         if Func <> nil then
@@ -4885,20 +4922,21 @@ begin
 end;
 
 function TParser.ParseObjectType(const ObjName: string): TObjectType;
-
+// todo 1: 要完善
   procedure CheckObject(typ: TObjectType);
   var
     i: Integer;
-  //  sym: TSymbol;
+    sym: TSymbol;
   begin
     for i := 0 to typ.Symbols.Count - 1 do
     begin
-      {sym := typ.Symbols[i];
+      sym := typ.Symbols[i];
       case sym.NodeKind of
         nkMethod:
           // 检查是否override;
-
-      end;}
+          if fmOverride in TMethod(Sym).Modifiers then
+            Include(TMethod(Sym).Modifiers, fmVirtual);
+      end;
     end;
   end;
 var
@@ -7935,7 +7973,8 @@ begin
   Directives := [];
   Modifiers := [];
   CallConvention := ccDefault;
-  MethodKind := mkNormal; 
+  MethodKind := mkNormal;
+  ObjectKind := okClass;
 end;
 
 { TQualifiedID }

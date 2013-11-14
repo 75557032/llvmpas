@@ -7,6 +7,8 @@ unit ast;
 interface
 uses Classes, SysUtils, hashtable;
 
+const
+  ROOT_VMT_OFFSET = 8; // 这个值和TObject的设计有关, 目前TObject有8个虚函数
 type
   TMemberVisibility = (
     visDefault, visStrictPrivate, visStrictProtected,
@@ -693,6 +695,7 @@ type
     DefaultProp: TProperty;
     ObjectSize: Int64;    // Instance Size
     VmtEntries: Integer;  // vmt条目个数
+    Vmt: array of TMethod; // vmt
     MR: TMethodResolution;
     GlobalAlignSize: Byte; // 1,2,4,8,16 声明该类时的Align
     ClassAttr: TClassAttributes;
@@ -802,6 +805,7 @@ type
     Symbols: TSymbolTable;       // TMethod, TProperty, TField, TFunction
     Base: TObjectType;
     VmtOffset: Cardinal;   // vmt表的偏移
+    VmtEntries: Integer;   // vmt条目个数
     GlobalAlignSize: Byte; // 1,2,4,8,16 声明该类时的Align
     ObjectAttr: TObjectAttributes;
 
@@ -884,12 +888,22 @@ type
 //    property ArgKind: TArgumentKind read GetArgKind;
   end;
 
+  TMethodKind = (
+    mkNormal, mkConstructor, mkDestructor,
+    mkObjCtor, mkObjDtor,  // for object
+    mkRecCtor, mkRecDtor   // for record
+  );
+
+  TObjectKind = (okClass, okObject, okRecord);
+
   TProceduralType = class(TType)
   public
     Args: TList; // TArgument
     ReturnType: TType;
     CallConvention: TCallingConvention;
     IsMethodPointer: Boolean;
+    MethodKind: TMethodKind;
+    ObjectKind: TObjectKind;
 
     constructor Create; override;
     destructor Destroy; override;
@@ -1212,14 +1226,13 @@ type
     procedure Add(Sym: TSymbol); override;
   end;
 
-  TMethodKind = (mkNormal, mkConstructor, mkDestructor);
-
   TMethod = class(TFunction)
   protected
     procedure CreateProceduralType; override;
   public
     MethodKind: TMethodKind;
-    VTIndex: Word;
+    ObjectKind: TObjectKind;
+    VTIndex: Smallint;    // 在VMT中的索引, 可负
     MsgNo: Word;      // Message id.
     DispID: Integer;  // disp id.
     constructor Create; override;
@@ -3789,15 +3802,39 @@ var
     else
       Offset := F.FieldType.Size;
   end;
+
+  procedure UpdateRootVmt(const Meth: string; Index: Integer);
+  var
+    Sym: TSymbol;
+  begin
+    Sym := FindCurSymbol(Meth);
+    if Assigned(Sym) and (Sym.NodeKind = nkMethod)
+        and (fmVirtual in TMethod(Sym).Modifiers) then
+    begin
+      TMethod(Sym).VTIndex := Index - ROOT_VMT_OFFSET;
+      Vmt[Index] := TMethod(Sym);
+    end;
+  end;
 var
-  i, Vmt: Integer;
+  i, idx: Integer;
   Offset: Int64;
   Sym: TSymbol;
 begin
   if Base = nil then
   begin
+  // todo 77: MARK 根类
   // 基类只有一个vmt
     ObjectSize := PtrSize;
+    VmtEntries := ROOT_VMT_OFFSET;
+    SetLength(Vmt, VmtEntries);
+    UpdateRootVmt('SafeCallException', 0);
+    UpdateRootVmt('AfterConstruction', 1);
+    UpdateRootVmt('BeforeDestruction', 2);
+    UpdateRootVmt('Dispatch', 3);
+    UpdateRootVmt('DefaultHandler', 4);
+    UpdateRootVmt('NewInstance', 5);
+    UpdateRootVmt('FreeInstance', 6);
+    UpdateRootVmt('Destroy', 7);
     Exit;
   end
   else
@@ -3826,22 +3863,41 @@ begin
   else
     ObjectSize := Offset;
 
-  if Base <> nil then
-    Vmt := Base.VmtEntries
-  else
-    Vmt := 0;
+  // 处理VMT
+  VmtEntries := Base.VmtEntries;
   for i := 0 to Symbols.Count - 1 do
   begin
     Sym := Symbols[i];
     if not (saStatic in Sym.Attr) and (Sym.NodeKind = nkMethod)
-        and (fmVirtual in TFunction(Sym).Modifiers) then
+        and ([fmVirtual, fmOverride] * TFunction(Sym).Modifiers = [fmVirtual]) then
     begin
-      TMethod(Sym).VTIndex := Vmt;
-      Inc(Vmt);
+      TMethod(Sym).VTIndex := VmtEntries - ROOT_VMT_OFFSET;
+      Inc(VmtEntries);
     end;
   end;
-  // todo 1: 需要再加上接口方法
-  VmtEntries := Vmt;
+  // todo 1: 计算VMT，需要再考虑接口方法
+
+  SetLength(Vmt, VmtEntries);
+  if VmtEntries > 0 then
+  begin
+    if Assigned(Base) and (Base.VmtEntries > 0) then
+      Move(Base.Vmt[0], Self.Vmt[0], Base.VmtEntries * SizeOf(Pointer));
+
+    for i := 0 to Symbols.Count - 1 do
+    begin
+      Sym := Symbols[i];
+      if not (saStatic in Sym.Attr) and (Sym.NodeKind = nkMethod)
+        and ([fmVirtual, fmOverride] * TFunction(Sym).Modifiers <> []) then
+      begin
+        idx := TMethod(Sym).VTIndex + ROOT_VMT_OFFSET;
+
+        if (idx >= 0) and (idx < VmtEntries) then
+          Vmt[idx] := TMethod(Sym)
+        else
+          Assert(False, 'Vmt index out of bound');
+      end;
+    end;
+  end;
 end;
 
 { TSubrangeType }
@@ -4164,11 +4220,11 @@ var
   end;
 
 var
-  i: Integer;
+  i, BaseVmt: Integer;
   Offset: Int64;
   Sym: TSymbol;
 begin
-  for i := 0 to Symbols.Count - 1 do
+ { for i := 0 to Symbols.Count - 1 do
   begin
     Sym := Symbols[i];
     if Sym.NodeKind = nkMethod then
@@ -4177,7 +4233,27 @@ begin
         Include(ObjectAttr, oaHasVirtual);
         Break;
       end;
+  end;}
+
+  if Assigned(Base) then
+    BaseVmt := Base.VmtEntries
+  else
+    BaseVmt := 0;
+
+  VmtEntries := BaseVmt;
+  for i := 0 to Symbols.Count - 1 do
+  begin
+    Sym := Symbols[i];
+    if not (saStatic in Sym.Attr) and (Sym.NodeKind = nkMethod)
+        and ([fmVirtual, fmOverride] * TFunction(Sym).Modifiers = [fmVirtual]) then
+    begin
+      TMethod(Sym).VTIndex := VmtEntries;
+      Inc(VmtEntries);
+    end;
   end;
+
+  if VmtEntries > BaseVmt then
+    Include(ObjectAttr, oaHasVirtual);
 
   if oaHasVirtual in ObjectAttr then
     Include(ObjectAttr, oaHasVmt)
@@ -4213,6 +4289,7 @@ begin
   begin
     // 先对齐指针
     Offset := (Offset + PtrSize - 1) and not (PtrSize - 1);
+    VmtOffset := Offset;
     // 再添加vmt指针
     Offset := Offset + PtrSize;
   end;
@@ -4842,6 +4919,8 @@ procedure TMethod.CreateProceduralType;
 begin
   inherited;
   FProcType.IsMethodPointer := not (fmStatic in Self.Modifiers);
+  FProcType.MethodKind := Self.MethodKind;
+  FProcType.ObjectKind := Self.ObjectKind;
 end;
 
 function TMethod.IsClassOrStatic: Boolean;

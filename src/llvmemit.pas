@@ -4,7 +4,7 @@ unit llvmemit;
 {$endif}
 
 interface
-uses Classes, SysUtils, ast, cntx;
+uses Classes, SysUtils, ast, cntx, ptrhashtable;
 
 {$define CHECKTYPE}
 
@@ -97,7 +97,7 @@ type
     //FContents: TStringList;
     FCodes: TStringList;
     FDecls: TStringList;
-    FExternalDecls: TList; // 外部声明
+    FExternalDecls: TPtrHashTable; // 外部声明
     FLandingpads: TStringList;
     FCurCntx: TEmitFuncContext;
     FIntrinsics: TLLVMIntrinsics;
@@ -142,22 +142,19 @@ type
                       const Typs, Args: array of string;
                       const RetVar: string); overload;
 
-    function EmitInvoke(const Inv: string): string;
     function TempVar: string;
     function LabelStr: string;
     function CurLandingPad: string;
     function TypeStr(Typ: TType): string;
     function ArgTypeStr(T: TType; Modifier: TArgumentModifier): string;
     function ArgDeclStr(Arg: TArgument; NeedName: Boolean): string;
+    // 如果Name='', 只输出类型声明,否则输出名称为Name的变量
     function ProcTypeStr(T: TProceduralType; const Name: string = ''): string;
 
-    // 如果Name='',则使用F.Name
+    // 如果Name='',则使用MangledName(F.Name)做为名称
     function FuncDecl(F: TFunctionDecl; NeedArgName: Boolean; const Name: string = ''): string;
     function CCStr(cc: TCallingConvention): string;
     procedure AddExternalDecl(Sym: TSymbol);
-
-    // 该类型的参数是否应该传引用？
-    function PassByRef(Arg: TArgument): Boolean;
 
     procedure EmitError(const Msg: string); overload;
     procedure EmitError(const Msg: string; const Args: array of const); overload;
@@ -165,10 +162,13 @@ type
     procedure EmitError(const Coord: TAstNodeCoord; const Msg: string; const Args: array of const); overload;
 
   protected
+    // 生成类RTTI信息
     procedure EmitRtti_Class(T: TClassType);
+    // 其它单元声明
     procedure EmitExternals;
+    // LLVM指令函数声明
     procedure EmitIntrinsics;
-//    procedure EmitSysRoutines;
+    // 对System单元的系统函数进行调用
     procedure EmitCallSys(Routine: TSystemRoutine;
                           const Typs, Args: array of string;
                           const RetVar: string = '');
@@ -232,7 +232,7 @@ type
 implementation
 
 const
-  ComplexTypes = [typAnsiString, typWideString, typUnicodeString,
+  SpecialTypes = [typAnsiString, typWideString, typUnicodeString,
     typShortString, typVariant, typOleVariant, typRecord, typObject,
     typArray, typDynamicArray];
   StructTypes = [typShortString, typVariant, typOleVariant,
@@ -359,6 +359,8 @@ Interface       i8**
 Set             i8, i16, i32, <byte x i8>
 *)
 
+// 是否结构化类型.
+// 这种类型的参数一般传递指针
 function IsStructType(T: TType): Boolean;
 begin
   T := T.OriginalType;
@@ -370,6 +372,8 @@ begin
     Result := T.TypeCode in StructTypes;
 end;
 
+// 是否特殊类型.
+// 这种类型当返回值,不能直接返回,需要由调用方提供接收地址
 function IsSpecialType(T: TType): Boolean;
 begin
   T := T.OriginalType;
@@ -378,7 +382,7 @@ begin
   else if T.TypeCode = typProcedural then
     Result := TProceduralType(T).IsMethodPointer
   else
-    Result := T.TypeCode in ComplexTypes;
+    Result := T.TypeCode in SpecialTypes;
 end;
 
 function NeedInit(T: TType): Boolean;
@@ -413,6 +417,7 @@ end;
 
 function MangledName(Sym: TSymbol): string;
 begin
+  Result := '';
   while Sym <> nil do
   begin
     if Result <> '' then
@@ -556,8 +561,7 @@ procedure TCodeGen.AddExternalDecl(Sym: TSymbol);
 //var
 //  Name, Decl: string;
 begin
-  if FExternalDecls.IndexOf(Sym) < 0 then
-    FExternalDecls.Add(Sym);
+  FExternalDecls.Add(Sym, nil);
 //  Name := MangledName(Sym);
 //  case Sym.NodeKind of
 //  // @__my__ = external global i16
@@ -649,8 +653,7 @@ begin
   FDecls := TStringList.Create;
   FDecls.Capacity := 64;
   FLandingpads := TStringList.Create;
-  FExternalDecls := TList.Create;
-  FExternalDecls.Capacity := 64;
+  FExternalDecls := TPtrHashTable.Create;
   FCntxList := TList.Create;
   FCntxList.Capacity := 16;
   NativeIntStr := 'i32';
@@ -699,7 +702,7 @@ var
 begin
   size := Length(s) + 1;
   // 0 name, 1 visibility, 2 size, 3 char count, 4 size, 5 string
-  WriteDecl(Format('@%s = %s unnamed_addr constant {i32, i32, [%d x i8]} {i32 -1, i32 %d, [%d x i8] c"%s"}',
+  WriteDecl(Format('@%s = %s unnamed_addr constant {%%SizeInt, %%SizeInt, [%d x i8]} {%%SizeInt -1, %%SizeInt %d, [%d x i8] c"%s"}',
     [
       name, Visibility[pub], size, size - 1, size, EncodeAStr(s)
     ]));
@@ -1164,8 +1167,8 @@ const
 {typLongBool} (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckNone,      ckNone,      ckZExt,     ckZExt,      ckZExt,      ckError,     ckError,     ckError,     ckError,     ckError,     ckInt2Bol,   ckBol2Bol,   ckBol2Bol,   ckNone,      ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
 {typAnsiChar} (ckNone,     ckNone,      ckZExt,      ckZExt,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckNone,      ckZExt,      ckZExt,      ckNone,      ckZExt,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
 {typWideChar} (ckITrunc,   ckITrunc,    ckNone,      ckNone,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckITrunc,    ckNone,      ckZExt,      ckITrunc,    ckNone,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typPointer } (ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckError,     ckError,     ckError,     ckError,     ckError,     ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckNone,      ckNone,       ckPtr2Ptr),
-{typPAnsiChar}(ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckError,     ckError,     ckError,     ckError,     ckError,     ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckNone,      ckNone,       ckPtr2Ptr),
+{typPointer } (ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckError,     ckError,     ckError,     ckError,     ckError,     ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Ptr,   ckPtr2Ptr,    ckPtr2Ptr),
+{typPAnsiChar}(ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckError,     ckError,     ckError,     ckError,     ckError,     ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Ptr,   ckNone,       ckPtr2Ptr),
 {typPWideChar}(ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckError,     ckError,     ckError,     ckError,     ckError,     ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Ptr,   ckPtr2Ptr,    ckNone)
   );
 
@@ -1177,12 +1180,15 @@ const
   var
     va: string;
   begin
-    EnsurePtr(desT, 'EmitBitcast');
-    EnsurePtr(V.TyStr, 'EmitBitcast');
-    va := TempVar;
-    WriteCode('%s = bitcast %s %s to %s', [va, V.TyStr, V.Name, desT]);
-    V.Name := va;
-    V.TyStr := desT;
+    if V.TyStr <> desT then
+    begin
+      EnsurePtr(desT, 'EmitBitcast');
+      EnsurePtr(V.TyStr, 'EmitBitcast');
+      va := TempVar;
+      WriteCode('%s = bitcast %s %s to %s', [va, V.TyStr, V.Name, desT]);
+      V.Name := va;
+      V.TyStr := desT;
+    end;
   end;
 var
 //  Va: string;
@@ -1385,8 +1391,8 @@ procedure TCodeGen.EmitFunc(Func: TFunctionDecl);
 
     if asStructValue in Arg.States then
     begin
-      // 结构化数据以值传入。只传入指针。函数建立一个副本
-      // 复制结构
+      // 结构化数据以值传入。只传入指针。在函数栈中建立一个副本，然后复制内容。
+      // LLVM会优化这段代码。
       // call void @llvm.memcpy.p0i8.p0i8.i32 i8* %arg.addr, i8* %arg, i32 size, 1
       EmitIns_memcpy(ty + '*',
                       '%' + Arg.Name + '.addr',
@@ -1561,7 +1567,7 @@ procedure TCodeGen.EmitFunc(Func: TFunctionDecl);
     begin
       parentLevel := FCurCntx.Level - 1;
       parentFrame := TEmitFuncContext(FCntxList[parentLevel]).FrameTyStr;
-    // 连接上一级堆栈桢
+      // 连接上一级堆栈桢
       Va1 := TempVar;
       WriteCode('%s = getelementptr %s* %%.fp, i32 0, i32 %d', [
         Va1, FCurCntx.FrameTyStr, FCurCntx.LinkedFrameIndex
@@ -2045,7 +2051,6 @@ begin
         LV.Name := '%.Self';
         LV.TyStr := 'i8*';
         LV.States := [];
-//        SelfPtr := '%.Self';
       end
       else if E.Left.OpCode = opMEMBER then
       begin
@@ -2062,7 +2067,7 @@ begin
           and not (TBinaryExpr(E.Left).Left.IsTypeSymbol) then
       begin
         // 以实例调用类方法,先取出它的vmt
-        //
+        // 其它如object之类不需要这样处理,因为它们的class方法不需要传入vmt
         if LV.TyStr <> 'i8**' then
         begin
           Va1 := TempVar;
@@ -2094,6 +2099,16 @@ begin
           else
             Va1 := LV.Name;
 
+          if parentT.TypeCode = typObject then
+          begin
+            // 对于object,它的vmt不是存于开头
+            Va2 := TempVar;
+            WriteCode('%s = getelementptr i8*** %s, %%SizeInt %d', [
+              Va2, Va1, TObjectType(parentT).VmtOffset div FModule.PointerSize
+            ]);
+            Va1 := Va2;
+          end;
+
           // load vmt
           Va2 := TempVar;
           WriteCode('%s = load i8*** %s', [Va2, Va1]);
@@ -2106,7 +2121,7 @@ begin
 
         // 至此, Va2 已经是vmt, type is i8**
         Va1 := TempVar;
-        WriteCode('%s = getelementptr i8** %s, i32 0, i32 %d', [
+        WriteCode('%s = getelementptr i8** %s, %%SizeInt %d', [
           Va1, Va2, TMethod(Fun).VTIndex
         ]);
 
@@ -2174,7 +2189,7 @@ begin
   if IsMeth then Inc(Count);
   if RetConv then Inc(Count);
   if IsNested then Inc(Count);
-  if IsCtor then Inc(Count, 2);
+  if IsCtor then Inc(Count);
   if IsDtor then Inc(Count);
   
   if Count > 0 then
@@ -2183,6 +2198,15 @@ begin
     begin
       ArgStr := Format('i8* %s, ', [SelfPtr]);
     end;
+
+    if IsCtor then
+    begin
+    // todo 1: 这个需要检查左表达式是否是实例，以及是否最外围
+      ArgStr := ArgStr + 'i8 1, '
+    end;
+
+    if IsDtor then
+      ArgStr := ArgStr + 'i8 1, ';
 
     if IsNested then
     begin
@@ -2306,7 +2330,7 @@ procedure TCodeGen.EmitGlobalVarDecl(V: TVariable);
       pub := not (saInternal in TSymbol(V).Attr);
       EmitAStr(pub, s + '.data', AnsiString(V.Value.VStr));
       //@b1.astr = global i8* getelementptr({i32, i32, [7 x i8]}* @b1.astr.data, i32 0, i32 2, i32 0)
-      WriteDecl(Format('@%s = %s global i8* getelementptr({i32, i32, [%d x i8]}* @%s, i32 0, i32 2, i32 0)',
+      WriteDecl(Format('@%s = %s global i8* getelementptr({%%SizeInt, %%SizeInt, [%d x i8]}* @%s, i32 0, i32 2, i32 0)',
         [
           s, Visibility[pub], Length(AnsiString(V.Value.VStr)) + 1, s + '.data'
         ]));
@@ -2336,7 +2360,7 @@ procedure TCodeGen.EmitGlobalVarDecl(V: TVariable);
         s2 := WideString(V.Value.VWStr);
       EmitUStr(pub, s + '.data', s2);
       //@b1.ustr = global i16* getelementptr({i32, i32, [3 x i16]}* @b1.ustr.data, i32 0, i32 2, i32 0)
-      WriteDecl(Format('@%s = %s global i16* getelementptr({i32, i32, [%d x i16]}* @%s, i32 0, i32 2, i32 0)',
+      WriteDecl(Format('@%s = %s global i16* getelementptr({%%SizeInt, %%SizeInt, [%d x i16]}* @%s, i32 0, i32 2, i32 0)',
         [
           s, Visibility[pub], Length(s2) + 1, s + '.data'
         ]));
@@ -2484,9 +2508,7 @@ begin
     Va := TempVar;
 
     EmitCallSys(srRound, ['double'], [Result.Name], Va);
-//    WriteCode('%s = call i64 @System._Round(double %s)', [
-//      Va, Result.Name
-//    ]);
+    
     Result.Name := Va;
     Result.TyStr := 'i64';
     Result.States := [];
@@ -2732,21 +2754,6 @@ begin
   end;
 end;
 
-function TCodeGen.EmitInvoke(const Inv: string): string;
-//var
-//  lpad, RetT: string;
-begin
-//  if RetTyp = '' then
-//    RetT := 'void' else
-//    RetT := RetTyp;
-//
-//  lpad := Self.CurLandingPad;
-//  if lpad = '' then
-
-//    Result := Format('tail call %s %s Func
-   Result := '';
-end;
-
 procedure TCodeGen.EmitModule(M: TModule; Cntx: TCompileContext);
 
   procedure EmitProgramEntry(M: TModule);
@@ -2806,6 +2813,12 @@ x86_64-unknown-linux-gnu — Linux
     }
     WriteDecl('');
   end;
+
+  procedure EmitNativeType;
+  begin
+    WriteDecl('%%NativeInt = type %s', [Self.NativeIntStr]);
+    WriteDecl('%%SizeInt = type %s', [Self.NativeIntStr]);
+  end;
 var
   i: Integer;
   Sym: TSymbol;
@@ -2814,6 +2827,7 @@ begin
   FContext := Cntx;
 
   EmitLLVMDecl;
+  EmitNativeType;
 
   for i := 0 to FModule.Symbols.Count - 1 do
   begin
@@ -3148,10 +3162,6 @@ begin
     Result.TyStr := 'i64';
     Result.States := [];
     EmitCallSys(srRound, ['double'], [Result.Name], Va);
-
-    WriteCode('%s = call i64 @System._Round(double %s)',
-      [Result.Name, Va]
-    );
   end;
 end;
 
@@ -3247,9 +3257,7 @@ begin
     end;
 
     EmitExpr(E.Left, L);
-{$IFDEF CHECKTYPE}
     EnsurePtr(L.TyStr, 'EmitOp_Index, left node must be ptr');
-{$ENDIF}
 
     T := E.Left.Typ;
     for I := 0 to High(Items) do
@@ -3267,12 +3275,12 @@ begin
       end;
       Va := TempVar;
       if T.TypeCode = typArray then
-        WriteCode('%s = getelementptr %s %s, %s 0, %s %s', [
-          Va, L.TyStr, L.Name, NativeIntStr, NativeIntStr, Items[I].Name
+        WriteCode('%s = getelementptr %s %s, %%SizeInt 0, %%SizeInt %s', [
+          Va, L.TyStr, L.Name, Items[I].Name
         ])
       else
-        WriteCode('%s = getelementptr %s %s, %s %s', [
-          Va, L.TyStr, L.Name, NativeIntStr, Items[I].Name
+        WriteCode('%s = getelementptr %s %s, %%SizeInt %s', [
+          Va, L.TyStr, L.Name, Items[I].Name
         ]);
 
       case T.TypeCode of
@@ -3547,14 +3555,9 @@ begin
     opIDIV:
       EmitCallSys(srInt64Div, ['i64', 'i64'], [L.Name, R.Name], Result.Name);
 
-//      WriteCode('%s = call i64 @System._Int64Div(i64 %s, i64 %s)', [
-//        Result.Name, L.Name, R.Name
-//      ]);
     opMOD:
       EmitCallSys(srInt64Mod, ['i64', 'i64'], [L.Name, R.Name], Result.Name);
-//      WriteCode('%s = call i64 @System._Int64Mod(i64 %s, i64 %s)', [
-//        Result.Name, L.Name, R.Name
-//      ]);
+
     opNE..opGE:
       if LT.IsSigned = RT.IsSigned then
       begin
@@ -3608,7 +3611,6 @@ begin
   WriteCode('br i1 %s, label %%%s, label %%%s', [S, Lb1, Lb2]);
   WriteLabel(Lb1);
   EmitCallSys(srIntOverflow, [], []);
-  //WriteCode('call void @System._IntOverflow()');  // todo 1: 要考虑异常
   WriteCode('unreachable');
   WriteLabel(Lb2);
   S := TempVar;
@@ -3842,8 +3844,8 @@ begin
         Result.Name := TempVar;
         Result.TyStr := TypeStr(E.Typ) + '*';
         Result.States := [vasAddrOfVar];
-        WriteCode('%s = getelementptr %s %s, %s 0, %s %d', [
-          Va, LV.TyStr, LV.Name, NativeIntStr, NativeIntStr, TField(Sym).Offset
+        WriteCode('%s = getelementptr %s %s, %%SizeInt 0, %%SizeInt %d', [
+          Va, LV.TyStr, LV.Name, TField(Sym).Offset
         ]);
         WriteCode('%s = bitcast i8* %s to %s', [
           Result.Name, Va, Result.TyStr
@@ -3941,8 +3943,7 @@ begin
 // Result如果只是变量地址，则生成load 语句
   if vasAddrOfVar in Result.States then
   begin
-    EnsurePtr(Result.TyStr, 'EmitOp_VarLoad, expect ptr');
-//   LastChar(Result.TyStr) = '*'
+    EnsurePtr(Result.TyStr, 'EmitOp_VarLoad, pointer expected');
     v := TempVar;
     WriteCode('%s = load %s %s', [v, Result.TyStr, Result.Name]);
     Result.Name := v;
@@ -3956,7 +3957,7 @@ begin
 // Result如果只是变量地址，则生成load 语句
   if vasAddrOfVar in Src.States then
   begin
-    EnsurePtr(Src.TyStr, 'EmitOp_VarLoad, expect ptr');
+    EnsurePtr(Src.TyStr, 'EmitOp_VarLoad, pointer expected');
     Des.Name := TempVar;
     Des.TyStr := Src.TyStr;
     Des.States := Src.States;
@@ -4062,23 +4063,81 @@ br i1 %flag, label %Ok, label %Fail
   end;
   WriteLabel(FailLabel);
   EmitCallSys(srOutOfRange, [], []);
-//  EmitCall('void @System._OutOfRange', '', DefCC, '', [], []);
   WriteCode('unreachable');
   WriteLabel(OkLabel);
-//  Include(FSysRoutines, sys_range_check);
 end;
 
 procedure TCodeGen.EmitRtti_Class(T: TClassType);
 var
   QualID: string;
+  I: Integer;
 begin
   QualID := MangledName(T);
   EmitAStr(True, QualID + '.$name', T.Name);
   // vmt
   WriteDecl('%%%s.$.vmt = type [%d x i8*]', [QualID, T.VmtEntries + 19]);
-  WriteDecl('@%s.$vmt = global %%%s.$.vmt zeroinitializer', [
+  WriteDecl('@%s.$vmt = global %%%s.$.vmt [', [
     QualID, QualID
   ]);
+  // vmtSelfPtr
+  WriteDecl('  i8* bitcast(i8** getelementptr(%%%s.$.vmt* @%s.$vmt, i32 0, i32 19) to i8*)',
+    [ QualID, QualID ]);
+  // Intf table
+  WriteDecl('  ,i8* null');
+  // Auto table
+  WriteDecl('  ,i8* null');
+  // Init table
+  WriteDecl('  ,i8* null');
+  // Type info
+  WriteDecl('  ,i8* null');
+  // Field table
+  WriteDecl('  ,i8* null');
+  // Method table
+  WriteDecl('  ,i8* null');
+  // Dynamic table
+  WriteDecl('  ,i8* null');
+  // Class name
+  WriteDecl('  ,i8* getelementptr({%%SizeInt, %%SizeInt, [%d x i8]}* @%s.$name, i32 0, i32 2, i32 0)',
+    [Length(T.Name) + 1, QualID]
+  );
+  // Instance size
+  WriteDecl('  ,i8* inttoptr(%%SizeInt %d to i8*)', [T.ObjectSize]);
+  // Parent
+  if not Assigned(T.Base) then
+    WriteDecl('  ,i8* null')
+  else
+    WriteDecl('  ,i8* bitcast(i8** getelementptr(%%%0:s.$.vmt* @%0:s.$vmt, i32 0, i32 19) to i8*)',
+      [ MangledName(T.Base) ]);
+  // SafeCallException
+  WriteDecl('  ,i8* null');
+  // AfterConstructor
+  WriteDecl('  ,i8* null');
+  // BeforeDestructor
+  WriteDecl('  ,i8* null');
+  // Dispatch
+  WriteDecl('  ,i8* null');
+  // DefaultHandler
+  WriteDecl('  ,i8* null');
+  // NewInstance
+  WriteDecl('  ,i8* null');
+  // FreeInstance
+  WriteDecl('  ,i8* null');
+  // Destroy
+  WriteDecl('  ,i8* null');
+
+  WriteDecl(';--- user vmt start');
+  // 类自己的VMT
+  for I := 0 to T.VmtEntries - 1 do
+  begin
+  {  if Assigned(T.Vmt[I]) then
+      WriteDecl('  ,i8* bitcast(%s @%s to i8*)', [
+        ProcTypeStr(T.Vmt[I].ProceduralType),
+        MangledName(T.Vmt[I])
+      ])
+    else} // todo 1: 暂时禁止,等功能完备后再做
+      WriteDecl('  ,i8* null');
+  end;
+  WriteDecl(']');
 end;
 
 procedure TCodeGen.EmitStmt(Stmt: TStatement);
@@ -4108,6 +4167,7 @@ procedure TCodeGen.EmitStmt_Assign(Stmt: TAssignmentStmt);
 var
   LV, RV: TVarInfo;
 begin
+//  if Stmt.Left.Typ in 
   EmitExpr(Stmt.Right, RV);
   EmitExpr(Stmt.Left, LV);
 
@@ -4372,31 +4432,6 @@ while.end:
   Self.FContinueLabel := OldCont;
 end;
 
-(*procedure TCodeGen.EmitSysRoutines;
-begin
-{
-    sys_ovf_check, sys_range_check, sys_io_check,
-    sys_astr, sys_wstr, sys_ustr, sys_sstr,
-    sys_var, sys_conv, sys_arith,
-    sys_raise
-}
-  if sys_raise in FSysRoutines then
-    WriteDecl('declare fastcc void @System._RaiseExcept(i8* %class, i8* %type) noreturn');
-  if sys_ovf_check in FSysRoutines then
-    WriteDecl('declare fastcc void @System._IntOverflow() noreturn');
-  if sys_range_check in FSysRoutines then
-    WriteDecl('declare fastcc void @System._OutOfRange() noreturn');
-  if sys_io_check in FSysRoutines then
-    WriteDecl('declare fastcc void @System._IOCheck(i8* %file)');
-  if sys_math in FSysRoutines then
-  begin
-    WriteDecl('declare fastcc i64 @System._Int64Div(i64, i64)');
-    WriteDecl('declare fastcc i64 @System._Int64Mod(i64, i64)');
-    WriteDecl('declare fastcc i64 @System._Round(double)');
-    WriteDecl('declare fastcc i64 @System._Trunc(double)');
-  end;
-end; *)
-
 procedure TCodeGen.EmitTypeDecl(T: TType);
 
   procedure EmitStructTypeDecl(T: TType);
@@ -4441,7 +4476,7 @@ procedure TCodeGen.EmitTypeDecl(T: TType);
     s := ArrayTypeStr(T);
     WriteDecl(Format('%%%s = type %s', [MangledName(T), s]));
   end;
-
+  {
   procedure EmitEnumTypeDecl(T: TEnumType);
   var
     s: string;
@@ -4453,7 +4488,7 @@ procedure TCodeGen.EmitTypeDecl(T: TType);
     else
       s := 'i32';
     WriteDecl(Format('%%%s = type %s', [MangledName(T), s]));
-  end;
+  end;   }
 
 begin
   case T.TypeCode of
@@ -4461,7 +4496,7 @@ begin
     typInterface, typDispInterface: EmitIntfTypeDecl(TInterfaceType(T));
     typProcedural: EmitProcTypeDecl(TProceduralType(T));
     typArray: EmitArrayTypeDecl(TArrayType(T));
-    typEnum: EmitEnumTypeDecl(TEnumType(T));
+  //  typEnum: EmitEnumTypeDecl(TEnumType(T));
   end;
 end;
 
@@ -4489,7 +4524,7 @@ begin
   // 0 name, 1 visibility, 2 char count, 3 byte count, 4 char count, 5 string
   WriteDecl(Format('@%s = %s unnamed_addr global {i32, [%d x i16]} {i32 %d, [%d x i16] [%s]}',
     [
-      name, Visibility[pub], ChCount, ByteCount, ChCount, EncodeAStr(s)
+      name, Visibility[pub], ChCount, ByteCount, ChCount, EncodeWStr(s)
     ]));
 end;
 
@@ -4499,24 +4534,46 @@ var
   i: Integer;
   s, ret, n, attr: string;
   Arg: TArgument;
-  retConvert, isSafecall: Boolean;
+  retConvert, isSafecall, isCtor, isDtor, isMeth: Boolean;
   cc: TCallingConvention;
   parentCntx: TEmitFuncContext;
 begin
   // safecall要返回i32，并且把原先返回的(如果有的话)当成最后一个参数, cc改为stdcall
   // 要把返回string,interface,record,variant等等 做为最后一个参数
+  isMeth := (F.NodeKind = nkMethod) and not (saStatic in F.Attr);
+  isCtor := (F.NodeKind = nkMethod) and (TMethod(F).MethodKind = mkConstructor);
+  isDtor := (F.NodeKind = nkMethod) and (TMethod(F).MethodKind = mkDestructor);
   isSafecall := F.CallConvention = ccSafeCall;
-  retConvert := (F.ReturnType <> nil)
+  retConvert := not isCtor and not isDtor and (F.ReturnType <> nil)
                and IsSpecialType(F.ReturnType)
                or isSafecall;
-
   s := '';
-  if (F.NodeKind = nkMethod) and not (saStatic in F.Attr) then
+  if isMeth then
   begin
     if NeedArgName then
       s := 'i8* %.Self, '
     else
       s := 'i8*, ';
+
+    if isCtor then
+      case TMethod(F).ObjectKind of
+        okObject:
+          if NeedArgName then
+            s := s + '%SizeInt %.vmt, '
+          else
+            s := s + '%SizeInt, ';
+        okRecord, okClass:
+          if NeedArgName then
+            s := s + 'i8 %.flag, '
+          else
+            s := s + 'i8, ';
+      end;
+
+    if isDtor then
+      if NeedArgName then
+        s := s + 'i8 %.outterMost, '
+      else
+        s := s + 'i8, ';
   end
   else if TFunction(F).Level > 0 then
   begin
@@ -4595,16 +4652,6 @@ begin
   Result := 'L' + IntToStr(FCurCntx.LabelID);
 end;
 
-function TCodeGen.PassByRef(Arg: TArgument): Boolean;
-begin
-  if Arg.Modifier in [argOut, argVar] then
-    Result := True
-  else if Arg.Modifier = argConst then
-    Result := IsStructType(Arg.ArgType)
-  else
-    Result := False;
-end;
-
 function TCodeGen.ProcTypeStr(T: TProceduralType; const Name: string): string;
 var
   i: Integer;
@@ -4615,14 +4662,25 @@ begin
   // 要把返回string,interface,record,variant等等 做为最后一个参数
   // safecall要返回i32，并且把原先返回的(如果有的话)当成最后一个参数
   isSafecall := T.CallConvention = ccSafeCall;
-  convResult := (T.ReturnType <> nil)
-               and IsSpecialType(T.ReturnType)
-               or isSafecall;
+  convResult := (T.MethodKind = mkNormal) and (T.ReturnType <> nil)
+               and IsSpecialType(T.ReturnType) or isSafecall;
 
   s := '';
-  if T.IsMethodPointer then s := 'i8*, ';
+  if T.IsMethodPointer then
+  begin
+    s := 'i8*, ';
 
-  for i := 0 to T.Args.Count - 1 do
+    if T.MethodKind = mkConstructor then
+      case T.ObjectKind of
+        okObject:           s := s + '%SizeInt, ';
+        okRecord, okClass:  s := s + 'i8, ';
+      end;
+
+    if T.MethodKind = mkDestructor then
+      s := s + 'i8, ';
+  end;
+
+  for i := 0 to T.CountOfArgs - 1 do
   begin
     arg := TArgument(T.Args[i]);
     s := s + ArgTypeStr(arg.ArgType, arg.Modifier) + ', ';

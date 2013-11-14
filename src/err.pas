@@ -62,6 +62,7 @@ const
   SErr_SymbolNotAccess = 'Symbol %s can not be asscess';
   SErr_BaseClassSealed = 'Base class is sealed, can not be inherited';
   SErr_AccessorMethodArgsNotMatched = 'Accessor method arguments not matched';
+  SErr_IntfNotAllowCtorDtor = 'Ctor/Dtor not allowed in interface';
   SWarn_CombiningSignedUnsigned = 'Combining signed and unsigned types - widened both operands';
 
 implementation

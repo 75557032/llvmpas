@@ -17,7 +17,10 @@ end;
 type
 	tmyobj = class
 	public
+		constructor Create;
 		procedure test;
+		procedure test_virtual; virtual;
+		procedure test_virtual2; virtual;
 		class procedure classProc;
 	end;
 	
@@ -28,7 +31,19 @@ type
 	
 	TMethPtr = procedure (Value: Integer) of object;
 
+constructor tmyobj.Create;
+begin
+end;
+
 procedure tmyobj.test;
+begin
+end;
+
+procedure tmyobj.test_virtual; 
+begin
+end;
+
+procedure tmyobj.test_virtual2; 
 begin
 end;
 
@@ -39,9 +54,21 @@ end;
 procedure tobj2.test;
 begin
 end;
+(*
+function test_meth2: tmyobj;
+begin
+	result := tmyobj.create;
+end;
+*)
 
+const
+	Sss1: AnsiString  = 'llvm';
+	Sss2: UnicodeString = '撸撸威猛';
+	
 procedure test_meth(a: tmyobj; const b: tobj2; c: TMethPtr);
 begin
+	a.test_virtual;
+	a.test_virtual2;
 	TMyObj.classProc;
 	a.classProc;
 	a.test;

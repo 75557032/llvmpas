@@ -47,15 +47,36 @@ type
     srRaiseExcept, srSafecallCheck, srHandleSafecallExcept,
     srInt64Div, srInt64Mod, srRound, srTrunc,
 
-    srAStrClr, srAStrNew, srAStrPtr, srAStrLength, srAStrComp,
-    srAStrEqual, srAStrAsg, srAStrAsgCopy, srAStrSetLength,
-    srAStrCopy, srAStrFromSStr, srAStrFromWStr,
+    srAStrClr, srAStrAddRef, srAStrNew, srAStrPtr, srAStrLength,
+    srAStrComp, srAStrEqual, srAStrAsg, srAStrAsgCopy, srAStrSetLength,
+    srAStrCopy, srAStrDelete, srAStrInsert, srAStrFromSStr, srAStrFromWStr,
     srAStrFromUStr, srAStrFromACh, srAStrFromWCh, srAStrFromPACh,
     srAStrFromPAChLen, srAStrFromPWCh, srAStrFromPWChLen,
     srAStrFromAArray, srAStrFromWArray, srAStrCat, srAStrCat3, srAStrCatN,
 
-    srVarOp, srVarNot, srVarNeg, srVarCopy
+    srWStrClr, srWStrAddRef, srWStrNew, srWStrPtr, srWStrLength,
+    srWStrComp, srWStrEqual, srWStrAsg, srWStrAsgCopy, srWStrSetLength,
+    srWStrCopy, srWStrDelete, srWStrInsert, srWStrFromSStr, srWStrFromAStr,
+    srWStrFromUStr, srWStrFromACh, srWStrFromWCh, srWStrFromPACh,
+    srWStrFromPAChLen, srWStrFromPWCh, srWStrFromPWChLen,
+    srWStrFromAArray, srWStrFromWArray, srWStrCat, srWStrCat3, srWStrCatN,
 
+    srUStrClr, srUStrAddRef, srUStrNew, srUStrPtr, srUStrLength,
+    srUStrComp, srUStrEqual, srUStrAsg, srUStrAsgCopy, srUStrSetLength,
+    srUStrCopy, srUStrDelete, srUStrInsert, srUStrFromSStr, srUStrFromAStr,
+    srUStrFromWStr, srUStrFromACh, srUStrFromWCh, srUStrFromPACh,
+    srUStrFromPAChLen, srUStrFromPWCh, srUStrFromPWChLen,
+    srUStrFromAArray, srUStrFromWArray, srUStrCat, srUStrCat3, srUStrCatN,
+
+    srVarClr, srVarAddRef, srVarOp, srVarNot, srVarNeg, srVarCopy,
+
+    srRecordClr, srRecordInit, srRecordAddRef,
+
+    srArrayClr, srArrayInit, srArrayAddRef,
+
+    srIntfClr, srIntfAddRef,
+
+    srDynArrayClr, srDynArrayAddRef
     // 以后再增加
   );
 
@@ -533,13 +554,37 @@ const
     '_IntOverflow', '_OutOfRange', '_IOCheck',
     '_RaiseExcept', '_SafecallCheck', '_HandleSafecallExcept',
     '_Int64Div', '_Int64Mod', '_Round', '_Trunc',
-    '_AStrClr', '_AStrNew', '_AStrPtr', '_AStrLength', '_AStrComp',
-    '_AStrEqual', '_AStrAsg', '_AStrAsgCopy', '_AStrSetLength',
-    '_AStrCopy', '_AStrFromSStr', '_AStrFromWStr',
+
+    '_AStrClr', '_AStrAddRef', '_AStrNew', '_AStrPtr', '_AStrLength',
+    '_AStrComp', '_AStrEqual', '_AStrAsg', '_AStrAsgCopy', '_AStrSetLength',
+    '_AStrCopy', '_AStrDelete', '_AStrInsert', '_AStrFromSStr', '_AStrFromWStr',
     '_AStrFromUStr', '_AStrFromACh', '_AStrFromWCh', '_AStrFromPACh',
     '_AStrFromPAChLen', '_AStrFromPWCh', '_AStrFromPWChLen',
     '_AStrFromAArray', '_AStrFromWArray', '_AStrCat', '_AStrCat3', '_AStrCatN',
-    '_VarOp', '_VarNot', '_VarNeg', '_VarCopy'
+
+    '_WStrClr', '_WStrAddRef', '_WStrNew', '_WStrPtr', '_WStrLength',
+    '_WStrComp', '_WStrEqual', '_WStrAsg', '_WStrAsgCopy', '_WStrSetLength',
+    '_WStrCopy', '_WStrDelete', '_WStrInsert', '_WStrFromSStr', '_WStrFromAStr',
+    '_WStrFromUStr', '_WStrFromACh', '_WStrFromWCh', '_WStrFromPACh',
+    '_WStrFromPAChLen', '_WStrFromPWCh', '_WStrFromPWChLen',
+    '_WStrFromAArray', '_WStrFromWArray', '_WStrCat', '_WStrCat3', '_WStrCatN',
+
+    '_UStrClr', '_UStrAddRef', '_UStrNew', '_UStrPtr', '_UStrLength',
+    '_UStrComp', '_UStrEqual', '_UStrAsg', '_UStrAsgCopy', '_UStrSetLength',
+    '_UStrCopy', '_UStrDelete', '_UStrInsert', '_UStrFromSStr', '_UStrFromAStr',
+    '_UStrFromWStr', '_UStrFromACh', '_UStrFromWCh', '_UStrFromPACh',
+    '_UStrFromPAChLen', '_UStrFromPWCh', '_UStrFromPWChLen',
+    '_UStrFromAArray', '_UStrFromWArray', '_UStrCat', '_UStrCat3', '_UStrCatN',
+
+    '_VarClr', '_VarAddRef', '_VarOp', '_VarNot', '_VarNeg', '_VarCopy',
+
+    '_RecordClr', '_RecordInit', '_RecordAddRef',
+
+    '_ArrayClr', '_ArrayInit', '_ArrayAddRef',
+
+    '_IntfClr', '_IntfAddRef',
+
+    '_DynArrayClr', '_DynArrayAddRef'
   );
 var
   Sym: TSymbol;

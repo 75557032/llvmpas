@@ -2122,18 +2122,7 @@ type
 
         nkFunc, nkMethod, nkExternalFunc: begin
           CheckArgs(TFunctionDecl(Ref^), bin);
-          if (Ref.NodeKind = nkMethod) and (TMethod(Ref).MethodKind = mkConstructor) then
-          begin
-            if Ref.Parent.NodeKind <> nkType then
-              ParseError(bin.Coord, SErr_ExpectStructType)
-            else if TType(Ref.Parent).TypeCode <> typClass then
-              ParseError(bin.Coord, SErr_ExpectClassType)
-            else
-              bin.Typ := TType(Ref.Parent);
-          end
-          else
-            bin.Typ := TFunctionDecl(Ref^).ReturnType;
-
+          bin.Typ := TFunctionDecl(Ref^).ReturnType;
           if bin.Typ = nil then
             if bin.Parent <> nil then
               bin.Typ := FContext.FAnytype
@@ -2964,6 +2953,12 @@ type
     end;
   end;
 
+  procedure CheckInherited(E: TExpr);
+  begin
+    // todo: no impl
+    E.Typ := FContext.FAnyType;
+  end;
+
   procedure CheckIntConst(E: TConstExpr);
   var
     I64: Int64;
@@ -3095,9 +3090,8 @@ type
 
       opINDEX: Result := CheckIndex(bin);
 
-//      opINHERITED: begin
-//        // not impl
-//      end;
+      opINHERITED: CheckInherited(bin);
+
       opSET: ResolveSetType(un);
 
       opLIST: begin end;

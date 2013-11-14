@@ -162,6 +162,8 @@ begin
     Compiler.UnitOutputDir := edt_UnitOutputDir.Text;
     Compiler.UnitDirs := mmo_LibDirs.Text;
     Compiler.IncludeDir := edt_IncludeDir.Text;
+    Compiler.GenCode := True;
+    Compiler.IsSys := False;
     Compiler.Run;
   finally
     Compiler.Free;
