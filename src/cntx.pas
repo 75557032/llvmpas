@@ -618,6 +618,7 @@ begin
 end;
 
 procedure TCompileContext.LoadSystemUnit;
+
   function GetSymbol(const s: string;
                       ExpectKind: TAstNodeKind;
                       ExpectType: TTypeCode): TSymbol;
@@ -632,6 +633,7 @@ procedure TCompileContext.LoadSystemUnit;
       if TType(Result).TypeCode <> ExpectType then
         raise ECompileContextError.CreateFmt('Invalid type: %s', [s]);
   end;
+
 var
   Reader: TCUReader;
 begin

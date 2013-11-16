@@ -7131,33 +7131,36 @@ begin
     Noname := False;
     NotAddSym := False;
     case CurToken of
-      tkClass: begin
-        // 在class中,private等成为关键字,防止Scanner把这些词扫描成一般标识符
-        Scanner.EnableScopeKeyWords(True);
-        NextToken;
-        if CurToken = tkOf then
-          Typ := ParseClassRefType
-        else
-          Typ := ParseClassType(TypName, Parent, NotAddSym);
-        Scanner.EnableScopeKeyWords(False);
-      end;
+      tkClass:
+        begin
+          // 在class中,private等成为关键字,防止Scanner把这些词扫描成一般标识符
+          Scanner.EnableScopeKeyWords(True);
+          NextToken;
+          if CurToken = tkOf then
+            Typ := ParseClassRefType
+          else
+            Typ := ParseClassType(TypName, Parent, NotAddSym);
+          Scanner.EnableScopeKeyWords(False);
+        end;
 
-      tkRecord: begin
-        Scanner.EnableScopeKeyWords(True);
-        Typ := ParseRecordType(TypName, Parent);
-        Scanner.EnableScopeKeyWords(False);
-        NotAddSym := True;
-      end;
+      tkRecord:
+        begin
+          Scanner.EnableScopeKeyWords(True);
+          Typ := ParseRecordType(TypName, Parent);
+          Scanner.EnableScopeKeyWords(False);
+          NotAddSym := True;
+        end;
 
       tkInterface, tkDispInterface: 
         Typ := ParseInterfaceType(TypName, Parent, NotAddSym);
 
-      tkObject: begin
-        Scanner.EnableScopeKeyWords(True);
-        Typ := ParseObjectType(TypName);
-        Scanner.EnableScopeKeyWords(False);
-        NotAddSym := True;
-      end;
+      tkObject:
+        begin
+          Scanner.EnableScopeKeyWords(True);
+          Typ := ParseObjectType(TypName);
+          Scanner.EnableScopeKeyWords(False);
+          NotAddSym := True;
+        end;
     else
       Typ := ParseTypeDecl(TypName, Parent);
       Noname := True;

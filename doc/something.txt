@@ -1,0 +1,70 @@
+﻿
+一些细节：
+
+一、关于构造函数和析构函数的处理
+
+在Object Pascal中，class的构造函数和析构函数要传入额外的参数：一个是class类型（VMT指针），一个是标记参数，用于指示是否创建实例等状态。比如：
+
+type
+	TMyObj = class
+	public
+		constructor Create(a: Integer);
+	end;
+
+这个Create其实真的原型是这样的：
+void* Create(void* pVmt, char flag, int a)
+
+flag如果等于0，则表示Create不是最外围的，一些初始化就不必做了，此时pVmt是已经创建的实例。如果flag小于0，表示pVmt是已经创建的实例。如果flag大于0，pVmt是VMT指针。
+
+在Create之中，首先判断flag是否等于0，如果是，绕过初始化和AfterConstruction，因为这是外围构造函数的事。如果flag大于0，则要先分配内存以及初始化，以及安装异常处理。如果小于0，则只有安装异常处理这一步，请查看ClassCreate函数。
+
+在初始化和执行Create之中的代码之后，最外围的构造函数要调用AfterConstruction，并撤销异常处理。这个异常处理保证了在构造之时发生异常，能及时释放内存。（此处的设计十分精妙，所有构造函数都共享一段异常处理，效率和程序大小都兼顾了）
+
+如果这件事用LLVM来完成，有点复杂，因为LLVM的异常处理机制没办法在某一处安装，然后在另一处撤销。只能在同一函数。因此，只能做一些变通。这里用C++来描述改进后的方案：
+
+void* Create(void* pVmt, char flag, int a)
+{
+	void* pInst;
+	if (flag > 0)
+		pInst = NewInstance(pVmt);
+	else
+		pInst = pVmt;
+
+	try {
+		// call parent's constructor
+		TObject::Create(pInst, 0);
+
+		// code...
+
+		// call AfterConstruction
+		if (flag != 0)
+			AfterConstruction(pInst);
+
+		return pInst;
+	} catch(...) {
+		if (flag != 0)
+			FreeInstance(pInst);
+		throw;
+	}
+}
+
+这样每个构造函数必须有try catch，这将导致程序变大。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -66,7 +66,7 @@ object MainFrm: TMainFrm
       Top = 8
       Width = 376
       TabOrder = 0
-      Text = 'test2\p1.pas'
+      Text = 'test2\b7.pas'
     end
     object edt_UnitOutputDir: TEdit
       Left = 152
@@ -116,6 +116,16 @@ object MainFrm: TMainFrm
       Caption = 'Generate System cu'
       OnClick = btnGenSysClick
       TabOrder = 7
+    end
+    object chkGenCode: TCheckBox
+      Left = 55
+      Height = 17
+      Top = 109
+      Width = 66
+      Caption = '生成代码'
+      Checked = True
+      State = cbChecked
+      TabOrder = 8
     end
   end
   object pgc1: TPageControl

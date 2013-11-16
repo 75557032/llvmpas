@@ -212,38 +212,6 @@ type
     destructor Destroy; override;
     procedure Clear;
   end;
-                   {
-  TDeclarations = class
-  public
-  //  Declarations,
-    ResStrings,
-    Types,       // TType
-    Constants,   // TConstant
-    Functions,
-    BuiltinFuncs,
-    Variables,
-    ThreadVars,  // TVariable
-    Labels: TList;
-    constructor Create;
-    destructor Destroy; override;
-  end;
-
-  TSection = class(TDeclarations)
-  public
-    UsesList: TStringList;
-    constructor Create;
-    destructor Destroy; override;
-    procedure AddUnit(const AUnitName: string);
-  end;
-
-  TInterfaceSection = class(TSection)
-  end;
-
-  TImplementationSection = class(TSection)
-  end;
-
-  TProgramSection = class(TSection)
-  end;                }
 
   TFileTimeStamp = record
     Date: LongWord;
@@ -2557,6 +2525,7 @@ function TSymbol.GetFullName: string;
 var
   Sym: TSymbol;
 begin
+// 取符号的完全限定名
   Sym := Self;
   while Sym <> nil do
   begin
@@ -2572,27 +2541,20 @@ var
   Sym: TSymbol;
 begin
   Sym := Self;
-  while Assigned(Sym) and (Sym.NodeKind <> nkModule {Sym.ClassType <> TModule}) do
+  while Assigned(Sym) and (Sym.NodeKind <> nkModule) do
     Sym := Sym.Parent;
+
   if not Assigned(Sym) or (Sym.NodeKind <> nkModule) then
     raise EASTError.CreateFmt('Symbol %s has not module', [Self.Name]);
 
   Result := TModule(Sym);
-(*  if ClassType = TPackage then
-    Result := nil
-  else
-  begin
-    El := Self;
-    while Assigned(El) and not (El.ClassType = TModule) do
-      El := El.Parent;
-    Result := TModule(El);
-  end;*)
 end;
 
 function TSymbol.GetSymName: string;
 var
   Sym: TSymbol;
 begin
+// 取符号限定名,不包括模块名
   Sym := Self;
   while Sym <> nil do
   begin
@@ -2613,55 +2575,7 @@ begin
     Result := M.Name else
     Result := '';
 end;
-              (*
-{ TDeclarations }
-
-constructor TDeclarations.Create;
-begin
-//  Declarations := TList.Create;
-  ResStrings := TList.Create;
-  Types := TList.Create;
-  Constants := TList.Create;
-  ThreadVars := TList.Create;
-  Functions := TList.Create;
-  BuiltinFuncs := TList.Create;
-  Variables := TList.Create;
-  Labels := TList.Create;
-end;
-
-destructor TDeclarations.Destroy;
-begin
-//  Declarations.Free;
-  ResStrings.Free;
-  Types.Free;
-  Constants.Free;
-  ThreadVars.Free;
-  Functions.Free;
-  BuiltinFuncs.Free;
-  Variables.Free;
-  Labels.Free;
-  inherited;
-end;
-
-{ TSection }
-
-procedure TSection.AddUnit(const AUnitName: string);
-begin
-
-end;
-
-constructor TSection.Create;
-begin
-  inherited;
-  UsesList := TStringList.Create;
-end;
-
-destructor TSection.Destroy;
-begin
-  UsesList.Free;
-  inherited;
-end;           *)
-
+              
 { TModule }
 
 procedure TModule.Add(Sym: TSymbol);
@@ -3823,7 +3737,7 @@ begin
   if Base = nil then
   begin
   // todo 77: MARK 根类
-  // 基类只有一个vmt
+  // 基类无字段,只有一个vmt指针
     ObjectSize := PtrSize;
     VmtEntries := ROOT_VMT_OFFSET;
     SetLength(Vmt, VmtEntries);

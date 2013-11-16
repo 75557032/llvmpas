@@ -17,6 +17,7 @@ type
     btnCopy: TButton;
     btnClear: TButton;
     btnGenSys: TButton;
+    chkGenCode: TCheckBox;
     edt_IncludeDir: TEdit;
     edt_SrcFile: TEdit;
     edt_UnitOutputDir: TEdit;
@@ -162,7 +163,7 @@ begin
     Compiler.UnitOutputDir := edt_UnitOutputDir.Text;
     Compiler.UnitDirs := mmo_LibDirs.Text;
     Compiler.IncludeDir := edt_IncludeDir.Text;
-    Compiler.GenCode := True;
+    Compiler.GenCode := chkGenCode.Checked;
     Compiler.IsSys := False;
     Compiler.Run;
   finally

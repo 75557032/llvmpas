@@ -75,6 +75,7 @@ type
   public
     procedure Put(Key: Pointer; Value: Pointer);
     function Get(Key: Pointer): Pointer;
+    // 增加映射, 如果已经存在返回True, 否则返回False
     function Add(Key: Pointer; Value: Pointer): Boolean;
   end;
 
