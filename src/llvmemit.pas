@@ -43,6 +43,7 @@ type
   TVarState = (vasAddrOfVar, vasCurrConst, vasAddrValue);
   TVarStates = set of TVarState;
 
+  PVarInfo = ^TVarInfo;
   TVarInfo = record
     Name, TyStr: string;
     States: TVarStates;
@@ -106,7 +107,8 @@ type
     FModule: TModule;
     FCodes: TStringList;
     FDecls: TStringList;
-    FExternalDecls: TPtrHashTable; // 外部声明
+    FExtDecls: TStringList;
+    FExternalSymbols: TPtrHashTable; // 外部声明
     FEmittedSymbols: TPtrHashTable; // 已经声明的外部符号
     FWStrInitList: TList;
     FLandingpads: TStringList;
@@ -123,6 +125,8 @@ type
     FFreeInstanceFunc,
     FBeforeDestructionFunc: TMethod;
 
+    FLeftVal: PVarInfo;
+  //  FIndent: Integer;
     function WriteCode(const S: string): Integer; overload;
     function WriteCode(const S: string; const Args: array of const): Integer; overload;
     function WriteLabel(const S: string): Integer;
@@ -183,6 +187,7 @@ type
                       const Name: string = ''): string;
     function CCStr(cc: TCallingConvention): string;
 
+    procedure AddExternalSymbol(Sym: TSymbol);
     // 声明外部符号(变量,RTTI,类型等)
     procedure EmitExternalDecl;
     // 声明系统类型的RTTI
@@ -597,6 +602,12 @@ end;
 
 { TCodeGen }
 
+procedure TCodeGen.AddExternalSymbol(Sym: TSymbol);
+begin
+  if Sym.Module <> FModule then
+    FExternalSymbols.Add(Sym, nil);
+end;
+
 procedure TCodeGen.AddInitWStr(const VarName, DataVarName,
   DataTyStr: string);
 var
@@ -688,8 +699,11 @@ begin
   FCodes.Capacity := 64;
   FDecls := TStringList.Create;
   FDecls.Capacity := 64;
+  FExtDecls := TStringList.Create;
+  FExtDecls.Capacity := 64;
+
   FLandingpads := TStringList.Create;
-  FExternalDecls := TPtrHashTable.Create;
+  FExternalSymbols := TPtrHashTable.Create;
   FEmittedSymbols := TPtrHashTable.Create;
   FWStrInitList := TList.Create;
   FWStrInitList.Capacity := 16;
@@ -710,8 +724,9 @@ destructor TCodeGen.Destroy;
 begin
   FCodes.Free;
   FDecls.Free;
+  FExtDecls.Free;
   FLandingpads.Free;
-  FExternalDecls.Free;
+  FExternalSymbols.Free;
   FEmittedSymbols.Free;
   FCntxList.Free;
   ClearWStrInitList;
@@ -1092,7 +1107,7 @@ procedure TCodeGen.EmitCall(Func: TFunctionDecl;
                            const Typs, Args: array of string;
                            const RetVar: string);
 var
-  argStr, lpad, s, nextLabel: string;
+  argStr, lpad, s, retty, nextLabel: string;
   i: Integer;
 begin
   Assert(High(Typs) = High(Args), 'EmitCall, Typs <> Args');
@@ -1105,6 +1120,13 @@ begin
   if argStr <> '' then
     Delete(argStr, Length(argStr) - 1, 2);
 
+  if not Assigned(Func.ReturnType) then
+    retty := 'void'
+  else if IsSpecialType(Func.ReturnType) then
+    retty := 'void'
+  else
+    retty := TypeStr(Func.ReturnType);
+
   if retVar = '' then
     S := ''
   else
@@ -1113,15 +1135,15 @@ begin
   lpad := Self.CurLandingPad;
   if lpad = '' then
   begin
-    WriteCode('%scall %s %s(%s)', [
-      S, CCStr(Func.CallConvention), MangledName(Func), argStr
+    WriteCode('%scall %s %s @%s(%s)', [
+      S, CCStr(Func.CallConvention), retty, MangledName(Func), argStr
     ]);
   end
   else
   begin
     nextLabel := Self.LabelStr;
-    WriteCode('%sinvoke %s %s(%s) to label %s unwind label %s', [
-        S, CCStr(Func.CallConvention), MangledName(Func), argStr, nextLabel, lpad
+    WriteCode('%sinvoke %s %s @%s(%s) to label %s unwind label %s', [
+        S, CCStr(Func.CallConvention), retty, MangledName(Func), argStr, nextLabel, lpad
       ]);
     WriteLabel(nextLabel);
   end;
@@ -1378,18 +1400,34 @@ procedure TCodeGen.EmitExternalDecl;
       typClass: EmitRtti_Class_External(TClassType(T));
     end;
   end;
+
+  procedure EmitExternalFuncDecl(F: TFunctionDecl);
+  begin
+    WriteDecl('declare ' + FuncDecl(F, False));
+  end;
 var
   I: Integer;
   Sym: TSymbol;
+  OldDecls: TStringList;
 begin
-  for I := 0 to FExternalDecls.Count - 1 do
+  OldDecls := FDecls;
+  FDecls := FExtDecls;
+
+  for I := 0 to FExternalSymbols.Count - 1 do
   begin
-    Sym := TSymbol(FExternalDecls.Keys[I]);
+    Sym := TSymbol(FExternalSymbols.Keys[I]);
     case Sym.NodeKind of
-      nkVariable: EmitExternalVarDecl(TVariable(Sym));
-      nkType: EmitExternalTypeDecl(TType(Sym));
+      nkVariable:
+        EmitExternalVarDecl(TVariable(Sym));
+      nkType:
+        EmitExternalTypeDecl(TType(Sym));
+      nkFunc, nkMethod:
+        EmitExternalFuncDecl(TFunctionDecl(Sym));
     end;
   end;
+
+  FDecls := OldDecls;
+
   // 变量. 过程类型
   // 类的RTTI
 //  Name := MangledName(Sym);
@@ -2027,7 +2065,7 @@ procedure TCodeGen.EmitFunc(Func: TFunctionDecl);
     end;
   end;
 
-  procedure WriteCtorEntry;
+  procedure WriteCtorEnter;
   var
     Va1,  FunTy: string;
   begin
@@ -2057,11 +2095,11 @@ procedure TCodeGen.EmitFunc(Func: TFunctionDecl);
     WriteCode('%%.ctor.inst = call %s i8* %s(i8* %%.Self)', [
         CCStr(FNewInstanceFunc.CallConvention), Va1
     ]);
-    WriteCode('store i8* %%.ctor.inst to i8** %%Result.addr');
-    WriteCode('br %ctor.end');
+    WriteCode('store i8* %.ctor.inst, i8** %Result.addr');
+    WriteCode('br label %ctor.end');
     WriteLabel('ctor.noalloc');
-    WriteCode('store i8* %%.Self to i8** %%Result.addr');
-    WriteCode('br %ctor.end');
+    WriteCode('store i8* %.Self, i8** %Result.addr');
+    WriteCode('br label %ctor.end');
     WriteLabel('ctor.end');
 
     FLandingpads.Add('ctor.lpad');
@@ -2080,30 +2118,70 @@ lpad:
   call void @_handle(i8* %.1, i32 %.2) noreturn
   unreachable
   *)
+    // 异常处理
+    FLandingpads.Delete(FLandingpads.Count - 1);
     WriteLabel('ctor.lpad');
     Va1 := TempVar;
     WriteCode(Va1 + ' = landingpad {i8*, i32} personality i8* bitcast(i32(...)* @__gxx_personality_v0 to i8*)');
     WriteCode('   catch i8* null');
     WriteCode('%%.ctor.ex = extractvalue {i8*, i32} %s, 0', [ Va1 ]);
-    WriteCode('call fastcc void @System._HandleCtorExcept(i8* %.ctor.ex, i8* %.ctor.inst, i8 %.flag) noreturn');
+    Va1 := TempVar;
+    WriteCode('%s = load i8** %%Result.addr', [Va1]);
+    EmitCallSys(srHandleCtorExcept, ['i8*', 'i8*', 'i8'], ['%.ctor.ex', Va1, '%.flag']);
+//    WriteCode('call fastcc void @System._HandleCtorExcept(i8* %.ctor.ex, i8* %.ctor.inst, i8 %.flag) noreturn');
     WriteCode('unreachable');
-    FLandingpads.Delete(FLandingpads.Count - 1);
   end;
 
   procedure WriteCtorAfter;
   var
-    Va, FunTy, L1: string;
+    Va, FunPtr, FunTy, L1: string;
   begin
     // Now %.ctor.inst is instance of class
-    EmitLoadVmtCast('%.ctor.inst', 'i8*', True,
-      FAfterConstructionFunc, Va, FunTy);
+    Va := TempVar;
+    WriteCode('%s = load i8** %%Result.addr', [Va]);
+    EmitLoadVmtCast(Va, 'i8*', True,
+      FAfterConstructionFunc, FunPtr, FunTy);
+
     L1 := Self.LabelStr;
-    WriteCode('invoke %s void %s(i8* %%.ctor.inst) to label %s unwind label %%ctor.lpad', [
+    WriteCode('invoke %s void %s(i8* %s) to label %%%s unwind label %%ctor.lpad', [
        CCStr(FAfterConstructionFunc.CallConvention),
-       Va, L1
+       FunPtr, Va, L1
     ]);
     WriteLabel(L1);
   end;
+
+  procedure WriteDtorEnter;
+  var
+    Va1, FunTy: string;
+  begin
+    Va1 := TempVar;
+    WriteCode('%s = icmp ne i8 %%.flag, 0', [Va1]);
+    WriteCode('br i1 %s, label %%dtor.outterMost, label %%dtor.inner', [Va1]);
+    WriteLabel('dtor.outterMost');
+
+    // Now %.Self is instance
+    EmitLoadVmtCast('%.Self', 'i8*', True, FBeforeDestructionFunc, Va1, FunTy);
+
+    // call fastcc <ret_ty> <ptr>(arg)
+    // 调用FBeforeDestructionFunc
+    WriteCode('call %s void %s(i8* %%.Self)', [
+        CCStr(FNewInstanceFunc.CallConvention), Va1
+    ]);
+  end;
+
+  procedure WriteDtorExit;
+  var
+    Va, FunTy: string;
+  begin
+    // Now %.ctor.inst is instance of class
+    EmitLoadVmtCast('%.Self', 'i8*', True,
+      FFreeInstanceFunc, Va, FunTy);
+    WriteCode('call %s void %s(i8* %%.Self)', [
+       CCStr(FAfterConstructionFunc.CallConvention),
+       Va
+    ]);
+  end;
+
 var
   OldCntx: TEmitFuncContext;
   LinkAttr: string;
@@ -2146,17 +2224,22 @@ begin
       WriteFrameDecl;
     WriteLocalInit(TFunction(Func));
     if FCurCntx.IsCtor then
-      WriteCtorEntry;
+      WriteCtorEnter
+    else if FCurCntx.IsDtor then
+      WriteDtorEnter;
 
     EmitStmt(TFunction(Func).StartStmt);
 
     if FCurCntx.IsCtor then
-      WriteCtorAfter;
+      WriteCtorAfter
+    else if FCurCntx.IsDtor then
+      WriteDtorExit;
 
     WriteLocalFree(TFunction(Func));
     WriteRet;
     if FCurCntx.IsCtor then
       WriteCtorExit;
+
     WriteCode('}');
     WriteCode('');
 
@@ -2897,6 +2980,7 @@ end;
 
 procedure TCodeGen.EmitIntrinsics;
 begin
+  WriteDecl('declare i32 @__gxx_personality_v0(...)');
   if llvm_memcpy in FIntrinsics then
   begin
     WriteDecl('declare void @llvm.memcpy.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)');
@@ -3031,7 +3115,10 @@ procedure TCodeGen.EmitModule(M: TModule; Cntx: TCompileContext);
   var
     S: string;
     PtrBits: Integer;
+    OldDecls: TStringList;
   begin
+    OldDecls := FDecls;
+    FDecls := FExtDecls;
     // todo 1: 先这样,以后改善
     PtrBits := FModule.PointerSize * 8;
     S := Format('e-p:%d:%d:%d', [PtrBits, PtrBits, PtrBits]);
@@ -3058,15 +3145,22 @@ i686-apple-darwin*       — Apple Darwin on X86
 x86_64-unknown-linux-gnu — Linux
     }
     WriteDecl('');
+
+    FDecls := OldDecls;
   end;
 
   procedure EmitNativeType;
+  var
+    OldDecls: TStringList;
   begin
+    OldDecls := FDecls;
+    FDecls := FExtDecls;
     WriteDecl('%%NativeInt = type %s', [Self.NativeIntStr]);
     WriteDecl('%%SizeInt = type %s', [Self.NativeIntStr]);
+    FDecls := OldDecls;
   end;
 
-  procedure LoadMethods;
+  procedure LoadObjectMethods;
 
     function Get(const S: string): TMethod;
     var
@@ -3094,9 +3188,15 @@ begin
 
   EmitLLVMDecl;
   EmitNativeType;
+  LoadObjectMethods;
   if FModule.Name = 'System' then
-    EmitSysTypeInfo;
-  LoadMethods;
+    EmitSysTypeInfo;{
+  else begin
+    FExternalSymbols.Add(FNewInstanceFunc, nil);
+    FExternalSymbols.Add(FAfterConstructionFunc, nil);
+    FExternalSymbols.Add(FFreeInstanceFunc, nil);
+    FExternalSymbols.Add(FBeforeDestructionFunc, nil);
+  end;               }
 
   for i := 0 to FModule.Symbols.Count - 1 do
   begin
@@ -3972,8 +4072,7 @@ procedure TCodeGen.EmitOp_LoadRef(Ref: TSymbol; out Result: TVarInfo);
     ]);
     Result.TyStr := 'i8**';
     Result.States := [];
-    if T.Module <> FModule then
-      FExternalDecls.Add(T, nil);
+    AddExternalSymbol(T);
   end;
 var
   T: TType;
@@ -4040,8 +4139,7 @@ begin
         Result.Name := '@' + MangledName(Ref);
         Result.TyStr := TypeStr(TVariable(Ref).VarType) + '*';
         Result.States := [vasAddrOfVar];
-        if Ref.Module <> FModule then
-          Self.FExternalDecls.Add(Ref, nil);
+        AddExternalSymbol(Ref);
       end;
 
     nkField:
@@ -4330,7 +4428,7 @@ begin
   QualID := MangledName(T);
   EmitAStr(True, QualID + '.$name', T.Name);
   // vmt
-  WriteDecl('%%%s.$.vmt = type [%d x i8*]', [QualID, T.VmtEntries + 19]);
+  WriteDecl('%%%s.$.vmt = type [%d x i8*]', [QualID, T.VmtEntries + 11]); // 8个虚函数
   WriteDecl('@%s.$vmt = global %%%s.$.vmt [', [
     QualID, QualID
   ]);
@@ -4364,33 +4462,18 @@ begin
     WriteDecl('  ,i8* bitcast(i8** getelementptr(%%%0:s.$.vmt* @%0:s.$vmt, i32 0, i32 19) to i8*)',
       [ MangledName(T.Base) ]);
 
-  {
-  // SafeCallException
-  WriteDecl('  ,i8* null');
-  // AfterConstructor
-  WriteDecl('  ,i8* null');
-  // BeforeDestructor
-  WriteDecl('  ,i8* null');
-  // Dispatch
-  WriteDecl('  ,i8* null');
-  // DefaultHandler
-  WriteDecl('  ,i8* null');
-  // NewInstance
-  WriteDecl('  ,i8* null');
-  // FreeInstance
-  WriteDecl('  ,i8* null');
-  // Destroy
-  WriteDecl('  ,i8* null'); }
-
   WriteDecl(';--- vmt start');
   // 类自己的VMT
   for I := 0 to T.VmtEntries - 1 do
   begin
     if Assigned(T.Vmt[I]) then
+    begin
       WriteDecl('  ,i8* bitcast(%s @%s to i8*)', [
         ProcTypeStr(T.Vmt[I].ProceduralType),
         MangledName(T.Vmt[I])
-      ])
+      ]);
+      AddExternalSymbol(T.Vmt[I]);
+    end
     else
       WriteDecl('  ,i8* null');
   end;
@@ -4403,7 +4486,7 @@ var
 begin
   QualID := MangledName(T);
   // vmt type
-  WriteDecl('%%%s.$.vmt = type [%d x i8*]', [QualID, T.VmtEntries + 19]);
+  WriteDecl('%%%s.$.vmt = type [%d x i8*]', [QualID, T.VmtEntries + 11]); // 8个虚函数
   // vmt data
   WriteDecl('@%s.$vmt = external global %%%s.$.vmt', [
     QualID, QualID
@@ -4467,9 +4550,17 @@ procedure TCodeGen.EmitStmt_Assign(Stmt: TAssignmentStmt);
 var
   LV, RV: TVarInfo;
 begin
-//  if Stmt.Left.Typ in 
-  EmitExpr(Stmt.Right, RV);
   EmitExpr(Stmt.Left, LV);
+ { if IsSpecialType(Stmt.Left.Typ) then
+  begin
+    if Stmt.Right.OpCode = opCall then
+    begin
+      FLeftVal := @LV;
+      EmitOp_Call(TBinaryExpr(Stmt.Right, RV));
+      FLeftVal := nil;
+    end
+  end;}
+  EmitExpr(Stmt.Right, RV);
 
   EmitOp_VarLoad(RV);
 
@@ -4896,7 +4987,7 @@ begin
           EmitSymbolDecl(TClassType(T).Symbols[I]);
         FEmittedSymbols.Add(T, nil);
         if Assigned(TClassType(T).Base) then
-          Self.FExternalDecls.Add(TClassType(T).Base, nil);
+          AddExternalSymbol(TClassType(T).Base);
       end;
 
     typRecord:
@@ -4916,7 +5007,7 @@ begin
           EmitSymbolDecl(TObjectType(T).Symbols[I]);
         FEmittedSymbols.Add(T, nil);
         if Assigned(TObjectType(T).Base) then
-          FExternalDecls.Add(TObjectType(T).Base, nil);
+          AddExternalSymbol(TObjectType(T).Base);
       end;
 
     typInterface, typDispInterface:
@@ -5071,7 +5162,8 @@ end;
 
 function TCodeGen.GetIR: string;
 begin
-  Result := FDecls.Text + #13#10;
+  Result := FExtDecls.Text + #13#10;
+  Result := Result + FDecls.Text + #13#10;
   Result := Result + FCodes.Text;
 end;
 

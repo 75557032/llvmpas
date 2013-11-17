@@ -45,6 +45,8 @@ type
   TSystemRoutine = (
     srIntOverflow, srOutOfRange, srIOCheck,
     srRaiseExcept, srSafecallCheck, srHandleSafecallExcept,
+    srHandleCtorExcept,
+
     srInt64Div, srInt64Mod, srRound, srTrunc,
 
     srAStrClr, srAStrAddRef, srAStrNew, srAStrPtr, srAStrLength,
@@ -553,6 +555,8 @@ const
   FunStr: array[TSystemRoutine] of string = (
     '_IntOverflow', '_OutOfRange', '_IOCheck',
     '_RaiseExcept', '_SafecallCheck', '_HandleSafecallExcept',
+    '_HandleCtorExcept',
+
     '_Int64Div', '_Int64Mod', '_Round', '_Trunc',
 
     '_AStrClr', '_AStrAddRef', '_AStrNew', '_AStrPtr', '_AStrLength',
@@ -601,7 +605,8 @@ begin
     FSystemRoutines[Routine] := Result;
     // 给某些函数添加属性, 便于llvm优化.
     case Routine of
-      srIntOverflow, srOutOfRange, srRaiseExcept:
+      srIntOverflow, srOutOfRange,
+      srRaiseExcept, srHandleCtorExcept:
         Include(Result.Modifiers, fmNoReturn);
     end;
   end;

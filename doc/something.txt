@@ -50,7 +50,18 @@ void* Create(void* pVmt, char flag, int a)
 
 这样每个构造函数必须有try catch，这将导致程序变大。
 
+对于析构函数也额外的参数传入。一个是实例指针，一个是标记参数，用于指示是否最外围析构函数。如果是最外围的，进入时要调用BeforeDestruction，退时之前要调用ClassDestroy；
 
+void Destroy(void* Self, char outterMost)
+{
+	if (outterMost != 0)
+		BeforeDestruction(Self);
+	TObject::Destroy(Self, 0);
+	if (outterMost != 0)
+		FreeInstance(Self);
+}
+
+二、
 
 
 

@@ -111,7 +111,7 @@ type
 var
   States, States2: TStateBuffer;
 
-  procedure SaveStates(var States: TStateBuffer);
+  procedure SaveStates(out States: TStateBuffer);
   var
     i: Integer;
     sym: TSymbol;
@@ -155,10 +155,10 @@ var
   procedure OrStates(var s1: TStateBuffer); overload;
   var
     i: Integer;
-    varList: TVarList;
+  //  varList: TVarList;
     sym: TSymbol;
   begin
-    varList := PCheckData(Data)^.VarList;
+  //  varList := PCheckData(Data)^.VarList;
     for i := 0 to Length(s1) - 1 do
     begin
       sym := TVarList(Data)[i];

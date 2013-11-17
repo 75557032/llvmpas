@@ -95,7 +95,6 @@ type
   TClass = class of TObject;
 
   HRESULT = type Longint;  { from WTYPES.H }
-  {$EXTERNALSYM HRESULT}
 
   PGUID = ^TGUID;
   TGUID = packed record
@@ -162,11 +161,11 @@ type
   end;
 
 const
-  S_OK = 0;                             {$EXTERNALSYM S_OK}
-  S_FALSE = $00000001;                  {$EXTERNALSYM S_FALSE}
-  E_NOINTERFACE = HRESULT($80004002);   {$EXTERNALSYM E_NOINTERFACE}
-  E_UNEXPECTED = HRESULT($8000FFFF);    {$EXTERNALSYM E_UNEXPECTED}
-  E_NOTIMPL = HRESULT($80004001);       {$EXTERNALSYM E_NOTIMPL}
+  S_OK = 0;
+  S_FALSE = $00000001;
+  E_NOINTERFACE = HRESULT($80004002);
+  E_UNEXPECTED = HRESULT($8000FFFF);
+  E_NOTIMPL = HRESULT($80004001);
 
 type
   IInterface = interface
@@ -192,9 +191,6 @@ type
       Flags: Word; var Params; VarResult, ExcepInfo, ArgErr: Pointer): HResult; stdcall;
   end;
 
-{$EXTERNALSYM IUnknown}
-{$EXTERNALSYM IDispatch}
-
   PShortString = ^ShortString;
   PAnsiString = ^AnsiString;
   PWideString = ^WideString;
@@ -203,18 +199,13 @@ type
   UCS2Char = WideChar;
   PUCS2Char = PWideChar;
   UCS4Char = type LongWord;
-  {$NODEFINE UCS4CHAR}
   PUCS4Char = ^UCS4Char;
-  {$NODEFINE PUCS4CHAR}
   TUCS4CharArray = array [0..$effffff] of UCS4Char;
   PUCS4CharArray = ^TUCS4CharArray;
   UCS4String = array of UCS4Char;
-  {$NODEFINE UCS4String}
 
   UTF8String = type string;
   PUTF8String = ^UTF8String;
-  {$NODEFINE UTF8String}
-  {$NODEFINE PUTF8String}
 
   IntegerArray  = array[0..$effffff] of Integer;
   PIntegerArray = ^IntegerArray;
@@ -224,12 +215,7 @@ type
   TPCharArray = packed array[0..(MaxLongint div SizeOf(PChar))-1] of PChar;
   PPCharArray = ^TPCharArray;
 
-  (*$HPPEMIT 'namespace System' *)
-  (*$HPPEMIT '{' *)
-  (*$HPPEMIT '  typedef int *PLongint;' *)
-  (*$HPPEMIT '}' *)
   PLongint      = ^Longint;
-  {$EXTERNALSYM PLongint}
   PInteger      = ^Integer;
   PCardinal     = ^Cardinal;
   PWord         = ^Word;
@@ -247,7 +233,6 @@ type
   PWordBool     = ^WordBool;
   PUnknown      = ^IUnknown;
   PPUnknown     = ^PUnknown;
-  {$NODEFINE PByte}
   PPWideChar    = ^PWideChar;
   PPChar        = ^PChar;
   PPAnsiChar    = PPChar;
@@ -285,7 +270,6 @@ type
 
   TVarType = Word;
   PVarData = ^TVarData;
-  {$EXTERNALSYM PVarData}
   TVarData = packed record
     case Integer of
       0: (VType: TVarType;
@@ -322,7 +306,6 @@ type
           );
       1: (RawData: array [0..3] of LongInt);
   end;
-  {$EXTERNALSYM TVarData}
 
 type
   TVarOp = Integer;
@@ -385,6 +368,8 @@ procedure _IOCheck;
 procedure _RaiseExcept;
 procedure _SafecallCheck(hr: Integer);
 procedure _HandleSafecallExcept(Instance: TObject);
+procedure _HandleCtorExcept(E: Pointer; Instance: TObject; Flag: Shortint);
+procedure _HandleFinally();
 // -------------------------
 function _Int64Div(a, b: Int64): Int64;
 function _Int64Mod(a, b: Int64): Int64;
@@ -505,6 +490,17 @@ end;
 procedure _HandleSafecallExcept(Instance: TObject);
 begin
 end;
+
+procedure _HandleCtorExcept(E: Pointer; Instance: TObject; Flag: Shortint);
+begin
+// compiler generated
+end;
+
+procedure _HandleFinally();
+begin
+
+end;
+
 // ------------------------------
 
 function _Int64Div(a, b: Int64): Int64;
@@ -690,7 +686,8 @@ end;
 
 class function TObject.ClassName: ShortString;
 begin
-  Result := PShortString(PPointer(Integer(Self) + vmtClassName)^)^;
+	Result := PShortString((PAnsiChar(Self) + vmtClassName))^;
+//  Result := PShortString(PPointer(Integer(Self) + vmtClassName)^)^;
 end;
 
 class function TObject.ClassNameIs(const Name: string): Boolean;
