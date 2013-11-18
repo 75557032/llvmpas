@@ -358,6 +358,7 @@ type
 
     // 是否是typProcedural
     function IsProcedural: Boolean;
+    function IsMethodPointer: Boolean;
 
     // 是否是字符串,或兼容于字符串
     // typAnsiString..typShortString, 一维Char/WideChar数组
@@ -373,7 +374,7 @@ type
     function IsUntypePointer: Boolean;
 
     // 是否同一类型
-    function Equals(typ: TType): Boolean;
+    function Equals(typ: TType): Boolean; {$ifdef FPC}reintroduce;{$endif}
   end;
 
   TTypeClass = class of TType;
@@ -999,6 +1000,7 @@ type
     // guid.d2 guid^.d2
     // ptr^
     // (ptr + 1)^
+    // pbyte(p^)
     // pchar(ptr)[1]
     function HasMemory: Boolean;
 
@@ -2805,6 +2807,11 @@ begin
     Result := TSubrangeType(Self).BaseType.TypeCode in [typShortint..typUInt64]
   else
     Result := TypeCode in [typShortint..typUInt64];
+end;
+
+function TType.IsMethodPointer: Boolean;
+begin
+  Result := (TypeCode = typProcedural) and TProceduralType(Self).IsMethodPointer;
 end;
 
 function TType.IsOrdinal: Boolean;

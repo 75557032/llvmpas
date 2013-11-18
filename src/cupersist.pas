@@ -1915,7 +1915,7 @@ begin
   SetLength(Result, Len);
   Read(Result[1], Len);
 end;
-
+{$hints off}
 function TCUReader.ReadByte: Byte;
 begin
   fStream.Read(Result, 1);
@@ -1925,7 +1925,7 @@ function TCUReader.ReadChar: AnsiChar;
 begin
   fStream.Read(Result, 1);
 end;
-
+{$hints on}
 procedure TCUReader.ReadModule(M: TModule; Cntx: TCompileContext);
   procedure SplitNameScope(M: TModule);
   begin

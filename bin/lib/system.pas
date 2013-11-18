@@ -367,7 +367,7 @@ procedure _OutOfRange;
 procedure _IOCheck;
 procedure _RaiseExcept;
 procedure _SafecallCheck(hr: Integer);
-procedure _HandleSafecallExcept(Instance: TObject);
+procedure _HandleSafecallExcept(Instance, ExceptObject: TObject);
 procedure _HandleCtorExcept(E: Pointer; Instance: TObject; Flag: Shortint);
 procedure _HandleFinally();
 // -------------------------
@@ -487,7 +487,7 @@ procedure _SafecallCheck(hr: Integer);
 begin
 end;
 
-procedure _HandleSafecallExcept(Instance: TObject);
+procedure _HandleSafecallExcept(Instance, ExceptObject: TObject);
 begin
 end;
 

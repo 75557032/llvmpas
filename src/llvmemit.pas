@@ -125,7 +125,7 @@ type
     FFreeInstanceFunc,
     FBeforeDestructionFunc: TMethod;
 
-    FLeftVal: PVarInfo;
+//    FLeftVal: PVarInfo;
   //  FIndent: Integer;
     function WriteCode(const S: string): Integer; overload;
     function WriteCode(const S: string; const Args: array of const): Integer; overload;
@@ -172,8 +172,10 @@ type
     function TempVar: string;
     function LabelStr: string;
     function CurLandingPad: string;
+    procedure EnterLandingpad(const S: string);
+    procedure LeaveLandingpad;
 
-    procedure AddInitWStr(const VarName, DataVarName, DataTyStr: string); 
+    procedure AddInitWStr(const VarName, DataVarName, DataTyStr: string);
     procedure ClearWStrInitList;
 
     function TypeStr(Typ: TType): string;
@@ -246,7 +248,7 @@ type
     procedure EmitOp_IntOvf(var L, R, Result: TVarInfo; Op: TAddSubMulOp; Ty: TLLVMIntType; IsSign: Boolean);
     procedure EmitOp_Boolean(E: TExpr; out Result: TVarInfo);
 
-    procedure EmitFuncCall(E: TBinaryExpr; Fun: TFunctionDecl;
+    procedure EmitFuncCall(Left, Right: TExpr; Fun: TFunctionDecl;
         FunT: TProceduralType; var Result: TVarInfo);
     procedure EmitCast(var R: TVarInfo; RT, LT: TType);
     procedure EmitRangeCheck(var V: TVarInfo; RT, LT: TType);
@@ -840,14 +842,29 @@ var
 
   procedure EmitBuiltin_Assigned;
   begin
-    EmitOp_VarLoad(V1);
     // todo 1: 要考虑事件
-    Result.Name := TempVar;
     Result.TyStr := 'i1';
     Result.States := [];
-    WriteCode('%s = icmp ne %s %s, null', [
-      Result.Name, V1.TyStr, V1.Name
+    if A1.Typ.IsMethodPointer then
+    begin
+      Va2 := TempVar;
+      WriteCode('%s = bitcast [2 x i8*]* %s to i8**', [Va2, V1.Name]);
+      Va := TempVar;
+      WriteCode('%s = load i8** %s', [Va, Va2]);
+
+      Result.Name := TempVar;
+      WriteCode('%s = icmp ne i8* %s, null', [
+        Result.Name, Va
       ]);
+    end
+    else
+    begin
+      EmitOp_VarLoad(V1);
+      Result.Name := TempVar;
+      WriteCode('%s = icmp ne %s %s, null', [
+        Result.Name, V1.TyStr, V1.Name
+      ]);
+    end;
   end;
 
   procedure EmitBuiltin_Break;
@@ -2102,7 +2119,7 @@ procedure TCodeGen.EmitFunc(Func: TFunctionDecl);
     WriteCode('br label %ctor.end');
     WriteLabel('ctor.end');
 
-    FLandingpads.Add('ctor.lpad');
+    EnterLandingPad('ctor.lpad');
   end;
 
   procedure WriteCtorExit;
@@ -2119,7 +2136,7 @@ lpad:
   unreachable
   *)
     // 异常处理
-    FLandingpads.Delete(FLandingpads.Count - 1);
+    LeaveLandingPad;
     WriteLabel('ctor.lpad');
     Va1 := TempVar;
     WriteCode(Va1 + ' = landingpad {i8*, i32} personality i8* bitcast(i32(...)* @__gxx_personality_v0 to i8*)');
@@ -2182,6 +2199,39 @@ lpad:
     ]);
   end;
 
+  procedure WriteSafecallEnter;
+  begin
+    EnterLandingpad('sc.lpad');
+  end;
+
+  procedure WriteSafecallExit;
+  var
+    Va, ThisPtr: string;
+  begin
+  (*
+lpad:
+  %0 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8* )
+          catch i8* null
+  %.1 = extractvalue { i8*, i32 } %0, 0
+  %.2 = extractvalue { i8*, i32 } %0, 1
+  call void @_handle(i8* %.1, i32 %.2) noreturn
+  unreachable
+  *)
+    LeaveLandingpad;
+    WriteLabel('sc.lpad');
+    // 异常处理
+    Va := TempVar;
+    WriteCode(Va + ' = landingpad {i8*, i32} personality i8* bitcast(i32(...)* @__gxx_personality_v0 to i8*)');
+    WriteCode('   catch i8* null');
+    WriteCode('%%.sc.ex = extractvalue {i8*, i32} %s, 0', [ Va ]);
+    if FCurCntx.IsMeth then
+      ThisPtr := '%.Self'
+    else
+      ThisPtr := 'null';
+    EmitCallSys(srHandleSafeCallExcept, ['i8*', 'i8*'], [ThisPtr, '%.sc.ex']);
+    WriteCode('unreachable');
+  end;
+
 var
   OldCntx: TEmitFuncContext;
   LinkAttr: string;
@@ -2213,7 +2263,7 @@ begin
     FCurCntx.RetConverted := not FCurCntx.IsCtor and not FCurCntx.IsDtor
                         and Assigned(Func.ReturnType)
                         and IsSpecialType(Func.ReturnType)
-                        or FCurCntx.IsSafecall;
+                        or (FCurCntx.IsSafecall and Assigned(Func.ReturnType));
 
     CheckLocal(FCurCntx.Func);
     SetupLocal(TFunction(Func));
@@ -2226,7 +2276,9 @@ begin
     if FCurCntx.IsCtor then
       WriteCtorEnter
     else if FCurCntx.IsDtor then
-      WriteDtorEnter;
+      WriteDtorEnter
+    else if FCurCntx.IsSafecall then
+      WriteSafeCallEnter;
 
     EmitStmt(TFunction(Func).StartStmt);
 
@@ -2238,7 +2290,9 @@ begin
     WriteLocalFree(TFunction(Func));
     WriteRet;
     if FCurCntx.IsCtor then
-      WriteCtorExit;
+      WriteCtorExit
+    else if FCurCntx.IsSafecall then
+      WriteSafeCallExit;            
 
     WriteCode('}');
     WriteCode('');
@@ -2252,7 +2306,7 @@ begin
   end;
 end;
 
-procedure TCodeGen.EmitFuncCall(E: TBinaryExpr; Fun: TFunctionDecl;
+procedure TCodeGen.EmitFuncCall(Left, Right: TExpr; Fun: TFunctionDecl;
   FunT: TProceduralType; var Result: TVarInfo);
 var
   Count, I: Integer;
@@ -2277,7 +2331,8 @@ begin
   IsMeth := FunT.IsMethodPointer;
   IsSafecall := FunT.CallConvention = ccSafeCall;
   RetConv := Assigned(FunT.ReturnType)
-              and IsSpecialType(FunT.ReturnType) or IsSafecall;
+             and IsSpecialType(FunT.ReturnType)
+             or (IsSafecall and Assigned(FunT.ReturnType));
 
   if Assigned(Fun) then
   begin
@@ -2312,15 +2367,15 @@ begin
       Assert(Fun.Parent.NodeKind = nkType, 'Method parent err');
 
       ParentT := TType(Fun.Parent);
-      if E.Left.OpCode = opSYMBOL then
+      if Left.OpCode = opSYMBOL then
       begin
         LV.Name := '%.Self';
         LV.TyStr := 'i8*';
         LV.States := [];
       end
-      else if E.Left.OpCode = opMEMBER then
+      else if Left.OpCode = opMEMBER then
       begin
-        EmitExpr(TBinaryExpr(E.Left).Left, LV);
+        EmitExpr(TBinaryExpr(Left).Left, LV);
         if ParentT.TypeCode in [typInterface, typDispInterface, typClass] then
           EmitOp_VarLoad(LV);
         EnsurePtr(LV.TyStr, 'Instance of method is not ptr');
@@ -2330,7 +2385,7 @@ begin
 
       // instance.classProc;
       if (ParentT.TypeCode = typClass) and (saClass in Fun.Attr)
-          and not (TBinaryExpr(E.Left).Left.IsTypeSymbol) then
+          and not (TBinaryExpr(Left).Left.IsTypeSymbol) then
       begin
         // 以实例调用类方法,先取出它的vmt
         // 其它如object之类不需要这样处理,因为它们的class方法不需要传入vmt
@@ -2416,7 +2471,7 @@ begin
   end
   else
   begin
-    EmitExpr(E.Left, LV);
+    EmitExpr(Left, LV);
     if FunT.IsMethodPointer then
     begin
     // 如果为method event?
@@ -2486,10 +2541,10 @@ begin
         ]);
     end;
 
-    if E.Right = nil then
+    if Right = nil then
       ArgE := nil
     else
-      ArgE := TUnaryExpr(E.Right).Operand;
+      ArgE := TUnaryExpr(Right).Operand;
 
     for I := 0 to FunT.CountOfArgs - 1 do
     begin
@@ -3341,7 +3396,7 @@ begin
       Assert(E.Left.Typ.TypeCode = typProcedural);
       FunT := TProceduralType(E.Left.Typ);
     end;
-    EmitFuncCall(E, TFunctionDecl(Ref), FunT, Result);
+    EmitFuncCall(E.Left, E.Right, TFunctionDecl(Ref), FunT, Result);
   end;
 end;
 
@@ -4547,19 +4602,47 @@ begin
 end;
 
 procedure TCodeGen.EmitStmt_Assign(Stmt: TAssignmentStmt);
+  // todo 1: 打算在Parser阶段就把对属性的赋值转为函数调用。
 var
   LV, RV: TVarInfo;
-begin
-  EmitExpr(Stmt.Left, LV);
- { if IsSpecialType(Stmt.Left.Typ) then
+//  LT, RT: TType;
+ (*
+  procedure VarAssign;
+  begin
+    EmitExpr(Stmt.Right, RV);
+    case LT.TypeCode of
+      typAnsiString:
+        case RT.TypeCode of
+          typAnsiString:
+            EmitCallSys(srAStrAsg, ['i8**', 'i8**'], [LV.Name, RV.Name]);
+        end;
+    end;
+  end;
+
+  procedure SpecialAssign;
   begin
     if Stmt.Right.OpCode = opCall then
     begin
-      FLeftVal := @LV;
-      EmitOp_Call(TBinaryExpr(Stmt.Right, RV));
-      FLeftVal := nil;
     end
-  end;}
+    else
+      VarAssign;
+  end;  *)
+begin
+//  LT := Stmt.Left.Typ;
+//  RT := Stmt.Right.Typ;
+
+  EmitExpr(Stmt.Left, LV);
+(*  if IsSpecialType(LT) then
+  begin
+    SpecialAssign;
+//    if Stmt.Right.OpCode = opCall then
+//    begin
+//      FLeftVal := @LV;
+//      EmitOp_Call(TBinaryExpr(Stmt.Right, RV));
+//      FLeftVal := nil;
+//    end
+    Exit;
+  end;*)
   EmitExpr(Stmt.Right, RV);
 
   EmitOp_VarLoad(RV);
@@ -4593,23 +4676,15 @@ begin
     if Assigned(Ref) and (Ref.NodeKind in [nkFunc, nkMethod, nkExternalFunc]) then
     begin
       FunT := TFunctionDecl(Ref).ProceduralType;
-      EmitFuncCall(E, TFunctionDecl(Ref), FunT, V);
+      EmitFuncCall(E.Left, E.Right, TFunctionDecl(Ref), FunT, V);
     end
     else begin
       Assert(E.Left.Typ.TypeCode = typProcedural);
       FunT := TProceduralType(E.Left.Typ);
-      EmitFuncCall(E, nil, FunT, V);
+      EmitFuncCall(E.Left, E.Right, nil, FunT, V);
     end;
 
   end;
-  {
-  if E.Left.Typ.TypeCode <> typProcedural then
-    EmitError(E.Left.Coord, 'EmitStmt_Call, not procedural type');
-  FunTyp := TProceduralType(E.Left.Typ);
-  for i := 0 to FunTyp.CountOfArgs - 1 do
-  begin
-
-  end;}
 end;
 
 procedure TCodeGen.EmitStmt_For(Stmt: TForStmt);
@@ -5061,6 +5136,11 @@ begin
     ]));
 end;
 
+procedure TCodeGen.EnterLandingpad(const S: string);
+begin
+  FLandingPads.Add(S);
+end;
+
 function TCodeGen.FuncDecl(F: TFunctionDecl; NeedArgName: Boolean;
     const Name: string = ''): string;
 var
@@ -5079,7 +5159,7 @@ begin
   isSafecall := F.CallConvention = ccSafeCall;
   retConvert := not isCtor and not isDtor and (F.ReturnType <> nil)
                and IsSpecialType(F.ReturnType)
-               or isSafecall;
+               or (isSafecall and Assigned(F.ReturnType));
   s := '';
   if isMeth then
   begin
@@ -5186,6 +5266,12 @@ begin
   Result := 'L' + IntToStr(FCurCntx.LabelID);
 end;
 
+procedure TCodeGen.LeaveLandingpad;
+begin
+  with FLandingPads do
+    if Count > 0 then Delete(Count - 1);
+end;
+
 function TCodeGen.ProcTypeStr(T: TProceduralType; const Name: string): string;
 var
   i: Integer;
@@ -5197,7 +5283,8 @@ begin
   // safecall要返回i32，并且把原先返回的(如果有的话)当成最后一个参数
   isSafecall := T.CallConvention = ccSafeCall;
   convResult := (T.MethodKind = mkNormal) and (T.ReturnType <> nil)
-               and IsSpecialType(T.ReturnType) or isSafecall;
+               and IsSpecialType(T.ReturnType)
+               or (isSafecall and Assigned(T.ReturnType));
 
   s := '';
   if T.IsMethodPointer then

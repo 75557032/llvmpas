@@ -450,6 +450,18 @@ function TParser.CheckAssignmentCompatibility(T1, T2: TType): Boolean;
     Result := (P1.ReturnType = P2.ReturnType) and (P1.CallConvention = P2.CallConvention)
         and (P1.IsMethodPointer = P2.IsMethodPointer) and IsSameArgs(P1.Args, P2.Args);
   end;
+
+  function CheckPointee(P1, P2: TPointerType): Boolean;
+  begin
+  // todo 1: 可能还是有问题，比如PInteger和PLongint
+    Result := (P1.RefType = P2.RefType) or (
+                  (P1.RefType.TypeCode = typObject)
+                and (P2.RefType.TypeCode = typObject)
+                and TObjectType(P2.RefType).IsInheritedFrom(
+                      TObjectType(P1.RefType)
+                    )
+              )
+  end;
 //type
 //  TBaseType = (btErr, btInt, btFlt, btCur, btEnu, btBol, btStr, btPtr);
 begin
@@ -482,32 +494,37 @@ T1 is the IUnknown or IDispatch interface type and T2 is Variant. (The variant's
   T2 := T2.NormalType;
   case T1.TypeCode of
     typShortint..typUInt64:
-      case T2.TypeCode of
-        typShortint..typUInt64: Result := True;
-        typVariant, typOleVariant: Result := True;
-      else
-        Result := False;
-      end;
+      Result := T2.TypeCode in [typShortint..typUInt64, typVariant, typOleVariant];
+
     typComp..typCurrency:
-      case T2.TypeCode of
-        typShortint..typUInt64: Result := True;
-        typComp..typCurrency: Result := True;
-        typVariant, typOleVariant: Result := True;
-      else
-        Result := False;
-      end;
+      Result := T2.TypeCode in [typShortint..typUInt64,
+                          typComp..typCurrency, typVariant, typOleVariant];
+
     typBoolean..typLongBool:
-      case T2.TypeCode of
-        typBoolean..typLongBool: Result := True;
-        typVariant, typOleVariant: Result := True;
+      Result := T2.TypeCode in [typBoolean..typLongBool, typVariant, typOleVariant];
+
+    typAnsiChar:
+      Result := T2.TypeCode in [typAnsiChar, typVariant, typOleVariant];
+
+    typWideChar:
+      Result := T2.TypeCode in [typWideChar, typVariant, typOleVariant];
+
+    typPointer:
+      if TPointerType(T1).IsUntype then
+      begin
+        Result := T2.TypeCode in [typPAnsiChar, typPWideChar, typPointer,
+          typClass, typClassRef];
+      end
+      else if T2.TypeCode = typPointer then
+      begin
+        if T2.IsUntypePointer then
+          Result := True
+        else
+          Result := CheckPointee(TPointerType(T1), TPointerType(T2));
+      end
       else
         Result := False;
-      end;
-    typAnsiChar: Result := T2.TypeCode in [typAnsiChar, typVariant, typOleVariant];
-    typWideChar: Result := T2.TypeCode in [typWideChar, typVariant, typOleVariant];
-    typPointer:
-      Result := T2.TypeCode in [typPAnsiChar, typPWideChar, typPointer,
-        typClass, typClassRef];
+
     typPAnsiChar:
       case T2.TypeCode of
         typPointer: Result := TPointerType(T2).IsUntype;
@@ -2482,11 +2499,6 @@ function TParser.ParseClassType(const TypName: string;
     Typ: TSymbol;
   begin
     NextToken; // skip '('
-{    Typ := ParseTypeRef;
-    if Typ.TypeCode <> typClass then begin
-      ParseError(SErr_InvalidBaseClass);
-      Typ := FContext.FObjectType;
-    end;}
     Typ := ParseQualifiedSym;
     if Typ.NodeKind = nkType then
       Typ := TType(Typ).OriginalType;

@@ -12,7 +12,7 @@
         <WindowIndex Value="0"/>
         <TopLine Value="4"/>
         <CursorPos X="24" Y="7"/>
-        <UsageCount Value="121"/>
+        <UsageCount Value="125"/>
       </Unit0>
       <Unit1>
         <Filename Value="main.pas"/>
@@ -21,12 +21,11 @@
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="Main"/>
-        <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="25"/>
-        <CursorPos X="30" Y="170"/>
-        <UsageCount Value="121"/>
+        <TopLine Value="147"/>
+        <CursorPos X="35" Y="152"/>
+        <UsageCount Value="125"/>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
       </Unit1>
@@ -35,9 +34,9 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="cupersist"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="1912"/>
-        <CursorPos X="22" Y="1921"/>
-        <UsageCount Value="92"/>
+        <TopLine Value="138"/>
+        <CursorPos X="52" Y="150"/>
+        <UsageCount Value="96"/>
       </Unit2>
       <Unit3>
         <Filename Value="expr.inc"/>
@@ -45,16 +44,19 @@
         <WindowIndex Value="0"/>
         <TopLine Value="1714"/>
         <CursorPos X="13" Y="1795"/>
-        <UsageCount Value="92"/>
+        <UsageCount Value="96"/>
       </Unit3>
       <Unit4>
         <Filename Value="ast.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="ast"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="3"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="3460"/>
-        <CursorPos X="32" Y="3469"/>
-        <UsageCount Value="92"/>
+        <TopLine Value="368"/>
+        <CursorPos X="75" Y="377"/>
+        <UsageCount Value="96"/>
+        <Loaded Value="True"/>
       </Unit4>
       <Unit5>
         <Filename Value="lex.pas"/>
@@ -63,7 +65,7 @@
         <WindowIndex Value="0"/>
         <TopLine Value="937"/>
         <CursorPos X="38" Y="944"/>
-        <UsageCount Value="92"/>
+        <UsageCount Value="96"/>
       </Unit5>
       <Unit6>
         <Filename Value="func.pas"/>
@@ -72,7 +74,7 @@
         <WindowIndex Value="0"/>
         <TopLine Value="1"/>
         <CursorPos X="27" Y="272"/>
-        <UsageCount Value="92"/>
+        <UsageCount Value="96"/>
       </Unit6>
       <Unit7>
         <Filename Value="fileutils.pas"/>
@@ -81,7 +83,7 @@
         <WindowIndex Value="0"/>
         <TopLine Value="6"/>
         <CursorPos X="48" Y="17"/>
-        <UsageCount Value="92"/>
+        <UsageCount Value="96"/>
       </Unit7>
       <Unit8>
         <Filename Value="cntx.pas"/>
@@ -91,7 +93,7 @@
         <WindowIndex Value="0"/>
         <TopLine Value="79"/>
         <CursorPos X="17" Y="13"/>
-        <UsageCount Value="92"/>
+        <UsageCount Value="96"/>
         <Loaded Value="True"/>
       </Unit8>
       <Unit9>
@@ -99,9 +101,9 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="llvmemit"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="1922"/>
-        <CursorPos X="38" Y="1937"/>
-        <UsageCount Value="92"/>
+        <TopLine Value="119"/>
+        <CursorPos X="5" Y="128"/>
+        <UsageCount Value="96"/>
       </Unit9>
       <Unit10>
         <Filename Value="ptrhashtable.pas"/>
@@ -110,7 +112,7 @@
         <WindowIndex Value="0"/>
         <TopLine Value="199"/>
         <CursorPos X="13" Y="208"/>
-        <UsageCount Value="92"/>
+        <UsageCount Value="96"/>
       </Unit10>
       <Unit11>
         <Filename Value="hashtable.pas"/>
@@ -119,7 +121,7 @@
         <WindowIndex Value="0"/>
         <TopLine Value="72"/>
         <CursorPos X="26" Y="82"/>
-        <UsageCount Value="92"/>
+        <UsageCount Value="96"/>
       </Unit11>
       <Unit12>
         <Filename Value="err.pas"/>
@@ -128,7 +130,7 @@
         <WindowIndex Value="0"/>
         <TopLine Value="1"/>
         <CursorPos X="12" Y="5"/>
-        <UsageCount Value="92"/>
+        <UsageCount Value="96"/>
       </Unit12>
       <Unit13>
         <Filename Value="exprh.inc"/>
@@ -136,7 +138,7 @@
         <WindowIndex Value="0"/>
         <TopLine Value="1"/>
         <CursorPos X="1" Y="1"/>
-        <UsageCount Value="92"/>
+        <UsageCount Value="96"/>
       </Unit13>
       <Unit14>
         <Filename Value="parser.pas"/>
@@ -145,7 +147,7 @@
         <WindowIndex Value="0"/>
         <TopLine Value="3900"/>
         <CursorPos X="57" Y="3926"/>
-        <UsageCount Value="59"/>
+        <UsageCount Value="63"/>
       </Unit14>
       <Unit15>
         <Filename Value="E:\Software\lazarus\lcl\lclproc.pas"/>
@@ -386,10 +388,12 @@
       </Unit44>
       <Unit45>
         <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\inc\objpash.inc"/>
+        <EditorIndex Value="2"/>
         <WindowIndex Value="0"/>
-        <TopLine Value="178"/>
-        <CursorPos X="8" Y="187"/>
-        <UsageCount Value="9"/>
+        <TopLine Value="44"/>
+        <CursorPos X="48" Y="239"/>
+        <UsageCount Value="10"/>
+        <Loaded Value="True"/>
       </Unit45>
       <Unit46>
         <Filename Value="E:\Software\lazarus\fpc\2.6.0\source\rtl\inc\genstr.inc"/>
@@ -444,19 +448,15 @@
     <General>
       <ActiveWindowIndexAtStart Value="0"/>
     </General>
-    <JumpHistory Count="3" HistoryIndex="2">
+    <JumpHistory Count="2" HistoryIndex="1">
       <Position1>
         <Filename Value="main.pas"/>
         <Caret Line="152" Column="35" TopLine="147"/>
       </Position1>
       <Position2>
-        <Filename Value="main.pas"/>
-        <Caret Line="153" Column="35" TopLine="148"/>
+        <Filename Value="ast.pas"/>
+        <Caret Line="66" Column="3" TopLine="42"/>
       </Position2>
-      <Position3>
-        <Filename Value="main.pas"/>
-        <Caret Line="170" Column="30" TopLine="25"/>
-      </Position3>
     </JumpHistory>
   </ProjectSession>
   <Debugging>

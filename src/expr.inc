@@ -314,6 +314,7 @@ const
           typInterface, typDispInterface:
             Result := bin.Left.OpCode = opNIL;
         else
+          // todo 1: 如果两个指针分别指向不同的object或record,则不应该通过
           Result := R.TypeCode in [typPointer, typPAnsiChar, typPWideChar, typClass, typClassRef];
         end;
 
@@ -398,11 +399,13 @@ const
                 (bin.OpCode in [opNE, opEQ, opGE, opLE]) and
                 (TSetType(L).RangeType = TSetType(R).RangeType);
 
-      else
-        Result := False;
+    else
+      Result := False;
     end;
+
     if not Result then
       IncompatibleErr(bin.Coord, L.TypeCode, R.TypeCode);
+
     if (eaConst in bin.Left.Attr) and (eaConst in bin.Right.Attr) then
       Include(bin.Attr, eaConst);
   end;
@@ -1552,7 +1555,7 @@ type
     // Assigned 的参数要求是指针
       if Num = 1 then begin
         NotAllowNode([nkType, nkFunc, nkMethod, nkExternalFunc], A1);
-        if not A1.Typ.IsPointer then
+        if not A1.Typ.IsPointer and not A1.Typ.IsProcedural then
           ParseError(A1.Coord, SErr_IncompatibleTypes);
       end else
         ParseError(CallExpr.Coord, SErr_ArgNotMatched2, ['assigned']);
@@ -2637,15 +2640,20 @@ type
   begin
     LTyp := bin.Left.Typ;
     case LTyp.TypeCode of
-      typClass: DefProp := TClassType(LTyp).DefaultProp;
-      typInterface, typDispInterface: DefProp := TInterfaceType(LTyp).DefaultProp;
+      typClass:
+        DefProp := TClassType(LTyp).DefaultProp;
+
+      typInterface, typDispInterface:
+        DefProp := TInterfaceType(LTyp).DefaultProp;
     else
       Exit;
     end;
     PropExpr := CreateSymbolExpr(DefProp.Name);
     PropExpr.Reference := DefProp;
+    PropExpr.Coord := bin.Coord;
     NewL := CreateBinaryExpr(opMEMBER, bin.Left, PropExpr);
     bin.Left := NewL;
+    NewL.Coord := bin.Coord;
     CheckSubSymbol(NewL);
     CheckIndexProperty(bin, DefProp);
   end;

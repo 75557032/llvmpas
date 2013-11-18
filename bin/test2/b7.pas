@@ -3,7 +3,7 @@
 // check cast
 
 interface
-
+(*
 type
 	pbyte = ^byte;
 	pword = ^word;
@@ -22,12 +22,37 @@ type
 	public
 		constructor Create;
 	end;
+type
+	TMyEvent2 = procedure of object;
+function test_event(const e: TMyEvent2): Boolean;
 
 function test_rec(rec: tmyrec): tmyrec;
 
 procedure test_cast(var a: byte; var b,c: word; p: pointer);
+*)
+procedure safecall_proc; safecall;
+procedure call_safecall;
 
 implementation
+
+{function test_str(s: string): string;
+begin
+	result := s;
+end;}
+
+procedure safecall_proc; safecall;
+begin
+end;
+
+procedure call_safecall;
+begin
+	safecall_proc;
+end;
+(*
+function test_event(const e: TMyEvent2): Boolean;
+begin
+	Result := Assigned(e);
+end;
 
 constructor tmyobj.Create;
 begin
@@ -45,7 +70,7 @@ begin
 	b := word(p^);
 	c := pword(p)^;
 end;
-
+*)
 var
 	i: Integer;
 initialization
