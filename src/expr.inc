@@ -831,7 +831,6 @@ const
         un.Typ := FContext.FTypes[T.TypeCode];
 
       typBoolean..typLongBool:
-      //  un.Typ := FContext.FTypes[typBoolean];
         un.Typ := FContext.FTypes[T.TypeCode];
 
       typVariant..typOleVariant:

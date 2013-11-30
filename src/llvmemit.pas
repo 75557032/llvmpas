@@ -31,7 +31,7 @@ type
   TBaseType = (btErr, btInt, btFlt, btCur, btBol, btChr, btStr, btSet, btVar, btPtr);
 
   TAutoInitVarType = (
-      aivtAStr, aivtWStr, aivtUStr, aivtSStr,
+      aivtNone, aivtAStr, aivtWStr, aivtUStr, aivtSStr,
       aivtDynArray, aivtIntf, aivtVariant
   );
 
@@ -50,12 +50,20 @@ type
 //    Ty: TLLVMType;
   end;
 
+  TTempVarKind = (
+    tvkNormal, tvkAStr, tvkWStr, tvkUStr, tvkSStr,
+    tvkDynArray, tvkIntf, tvkVariant
+  );
+
   TTempVarInfo = class
   public
     Name: string;
-  //  TyStr: string;
-  //  Index, ArrayIndex: Word;
-    Typ: TAutoInitVarType;
+    TyStr: string;
+    Typ: TType;
+    FPIndex: Integer;
+  //  ArrayIndex: Word;
+  //  Typ: TAutoInitVarType;
+    Kind: TTempVarKind;
   end;
 
   TWStrInitInfo = class
@@ -63,6 +71,12 @@ type
     VarName: string;
     DataVarName: string;
     DataTyStr: string;
+  end;
+
+  TTryBlock = class
+  public
+    LandingPad: string;
+    FinalProc: string;
   end;
 
   TEmitFuncContext = class
@@ -77,18 +91,21 @@ type
     FrameAlign: Byte;
     Level: Byte;           // Func.Level
     LinkedFrameIndex: Word; // 连接上一级桢的索引
+    HasAutoFreeVar: Boolean;
     NeedFrame: Boolean;    // 当前函数的变量或参数被嵌套函数引用，需要Frame结构
     HasNest: Boolean;
     RetConverted: Boolean;       // 返回值转换为参数
     IsSafecall: Boolean;
     IsMeth, IsCtor, IsDtor: Boolean;
 
-    TempID, LabelID: Integer;
+    TempID, LabelID, AutoID, PadID: Integer;
     TempInitVars: TList;   // 需要初始/释放的运算中的临时变量
     ExitLabel: string;
 
+    Codes: TStringList;
+    constructor Create;
     destructor Destroy; override;
-    procedure AddTempVar(const Name: string; vt: TAutoInitVarType);
+    function AddAutoVar(const TyStr: string; T: TType; Kind: TTempVarKind): string;
   end;
 
   TCPUKind = (ckX86, ckX86_64, ckARM, ckXCore, ckPPC32, ckPPC64);
@@ -125,7 +142,7 @@ type
     FFreeInstanceFunc,
     FBeforeDestructionFunc: TMethod;
 
-//    FLeftVal: PVarInfo;
+  //  FLeftVal: PVarInfo;
   //  FIndent: Integer;
     function WriteCode(const S: string): Integer; overload;
     function WriteCode(const S: string; const Args: array of const): Integer; overload;
@@ -172,9 +189,11 @@ type
     function TempVar: string;
     function LabelStr: string;
     function CurLandingPad: string;
-    procedure EnterLandingpad(const S: string);
+    function CurFinalProc: string;
+    procedure EnterLandingpad(const LPad: string; IsExcept: Boolean = False);
     procedure LeaveLandingpad;
 
+    procedure AddAutoVar(T: TType; out Name, TyStr: string);
     procedure AddInitWStr(const VarName, DataVarName, DataTyStr: string);
     procedure ClearWStrInitList;
 
@@ -251,6 +270,7 @@ type
     procedure EmitFuncCall(Left, Right: TExpr; Fun: TFunctionDecl;
         FunT: TProceduralType; var Result: TVarInfo);
     procedure EmitCast(var R: TVarInfo; RT, LT: TType);
+    //procedure EmitCastStr(var L, R: TVarInfo; RT, LT: TType);
     procedure EmitRangeCheck(var V: TVarInfo; RT, LT: TType);
     function IsRangeCheckNeeded(RT, LT: TType): Boolean;
     procedure EmitStmt_Assign(Stmt: TAssignmentStmt);
@@ -391,6 +411,73 @@ const
     'add', 'sub', 'or', 'xor',
 //    opMUL, opFDIV, opIDIV, opMOD, opAND, opSHL, opSHR,
     'mul', 'fdiv', 'div', 'urem', 'and', 'shl', 'lshr'
+  );
+
+type
+  TCastKind = (
+    ckNone, ckError,
+    ckITrunc, ckSExt, ckZExt,
+    ckFpTrunc, ckFpExt,
+    ckFp2Si, ckFp2Ui, ckSi2Fp, ckUi2Fp,
+    ckCur2Si, {ckCur2Ui, }ckSi2Cur, ckUi2Cur, ckFp2Cur, ckCur2Fp,
+    {ckBol2Int, }ckInt2Bol, ckBol2Bol,
+    ckPtr2Int, ckInt2Ptr,
+    ckPtr2Ptr,
+    ckAs2Ws, ckAs2Us, ckAs2Ss,
+    ckWs2As, ckWs2Us, ckWs2Ss,
+    ckUs2As, ckUs2Ws, ckUs2Ss,
+    ckSs2As, ckSs2Ws, ckSs2Us,
+    ckAc2As, ckAc2Ws, ckAc2Us, ckAc2Ss,
+    ckWc2As, ckWc2Ws, ckWc2Us, ckWc2Ss
+  );
+const
+  CastMaps: array[typShortint..typPWideChar, typShortint..typPWideChar] of TCastKind = (
+//            typShortint, typByte,     typSmallint, typWord,     typLongint,  typLongWord, typInt64,   typUInt64,   typComp,     typReal48,   typSingle,   typDouble,   typExtended, typCurrency, typBoolean,  typByteBool, typWordBool, typLongBool, typAnsiChar, typWideChar, typPointer,  typPAnsiChar, typPWideChar
+{typShortint} (ckNone,     ckNone,      ckSExt,      ckSExt,      ckSExt,      ckSExt,      ckSExt,     ckSExt,      ckSExt,      ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Cur,    ckInt2Bol,   ckNone,      ckSExt,      ckSExt,      ckNone,      ckSExt,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typByte    } (ckNone,     ckNone,      ckZExt,      ckZExt,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckNone,      ckZExt,      ckZExt,      ckNone,      ckZExt,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typSmallint} (ckITrunc,   ckITrunc,    ckNone,      ckNone,      ckSExt,      ckSExt,      ckSExt,     ckSExt,      ckSExt,      ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Cur,    ckInt2Bol,   ckITrunc,    ckNone,      ckSExt,      ckITrunc,    ckNone,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typWord    } (ckITrunc,   ckITrunc,    ckNone,      ckNone,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckITrunc,    ckNone,      ckZExt,      ckITrunc,    ckNone,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typLongint } (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckNone,      ckNone,      ckSExt,     ckSExt,      ckSExt,      ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Cur,    ckInt2Bol,   ckITrunc,    ckITrunc,    ckNone,      ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typLongWord} (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckNone,      ckNone,      ckZExt,     ckZExt,      ckZExt,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckITrunc,    ckITrunc,    ckNone,      ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typInt64   } (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckNone,     ckNone,      ckNone,      ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Cur,    ckInt2Bol,   ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typUInt64  } (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckNone,     ckNone,      ckNone,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typComp    } (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckNone,     ckNone,      ckNone,      ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Cur,    ckInt2Bol,   ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typReal48  } (ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckNone,      ckFpTrunc,   ckNone,      ckNone,      ckFp2Cur,    ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,      ckError),
+{typSingle  } (ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckFpExt,     ckNone,      ckFpExt,     ckFpExt,     ckFp2Cur,    ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,      ckError),
+{typDouble  } (ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckNone,      ckFpTrunc,   ckNone,      ckNone,      ckFp2Cur,    ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,      ckError),
+{typExtended} (ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckNone,      ckFpTrunc,   ckNone,      ckNone,      ckFp2Cur,    ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,      ckError),
+{typCurrency} (ckError,    ckError,     ckError,     ckError,     ckError,     ckError,     ckError,    ckError,     ckCur2Si,    ckCur2Fp,    ckCur2Fp,    ckCur2Fp,    ckCur2Fp,    ckNone,      ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,      ckError),
+{typBoolean } (ckNone,     ckNone,      ckZExt,      ckZExt,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckError,     ckError,     ckError,     ckError,     ckError,     ckNone,      ckBol2Bol,   ckBol2Bol,   ckBol2Bol,   ckZExt,      ckZExt,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typByteBool} (ckNone,     ckNone,      ckZExt,      ckZExt,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckError,     ckError,     ckError,     ckError,     ckError,     ckInt2Bol,   ckNone,      ckBol2Bol,   ckBol2Bol,   ckNone,      ckZExt,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typWordBool} (ckITrunc,   ckITrunc,    ckNone,      ckNone,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckError,     ckError,     ckError,     ckError,     ckError,     ckInt2Bol,   ckBol2Bol,   ckNone,      ckBol2Bol,   ckITrunc,    ckNone,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typLongBool} (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckNone,      ckNone,      ckZExt,     ckZExt,      ckZExt,      ckError,     ckError,     ckError,     ckError,     ckError,     ckInt2Bol,   ckBol2Bol,   ckBol2Bol,   ckNone,      ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typAnsiChar} (ckNone,     ckNone,      ckZExt,      ckZExt,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckNone,      ckZExt,      ckZExt,      ckNone,      ckZExt,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typWideChar} (ckITrunc,   ckITrunc,    ckNone,      ckNone,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckITrunc,    ckNone,      ckZExt,      ckITrunc,    ckNone,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
+{typPointer } (ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckError,     ckError,     ckError,     ckError,     ckError,     ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Ptr,   ckPtr2Ptr,    ckPtr2Ptr),
+{typPAnsiChar}(ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckError,     ckError,     ckError,     ckError,     ckError,     ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Ptr,   ckNone,       ckPtr2Ptr),
+{typPWideChar}(ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckError,     ckError,     ckError,     ckError,     ckError,     ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Ptr,   ckPtr2Ptr,    ckNone)
+  );
+
+  StrCastMaps: array[typAnsiString..typShortString, typAnsiString..typShortString] of TCastKind = (
+                    {typAnsiString} {typWideString} {typUnicodeString} {typShortString}
+{typAnsiString}     (ckNone,         ckAs2Ws,        ckAs2Us,           ckAs2Ss),
+{typWideString}     (ckWs2As,        ckNone,         ckWs2Us,           ckWs2Ss),
+{typUnicodeString}  (ckUs2As,        ckUs2Ws,        ckNone,            ckUs2Ss),
+{typShortString}    (ckSs2As,        ckSs2Ws,        ckSs2Us,           ckNone)
+  );
+
+  StrCnvs: array[ckAs2Ws .. ckWc2Ss] of TSystemRoutine = (
+    srWStrFromAStr, srUStrFromAStr, srSStrFromAStr,
+    srAStrFromWStr, srUStrFromWStr, srSStrFromWStr,
+    srAStrFromUStr, srWStrFromUStr, srSStrFromUStr,
+    srAStrFromSStr, srWStrFromSStr, srUStrFromSStr,
+    srAStrFromACh,  srWStrFromACh,  srUStrFromACh, srSStrFromACh,
+    srAStrFromWCh,  srWStrFromWCh,  srUStrFromWCh, srSStrFromWCh
+{    ckWs2As, ckWs2Us, ckWs2Ss,
+    ckUs2As, ckUs2Ws, ckUs2Ss,
+    ckSs2As, ckSs2Ws, ckSs2Us,
+    ckAc2As, ckAc2Ws, ckAc2Us, ckAc2Ss,
+    ckWc2As, ckWc2Ws, ckWc2Us, ckWc2Ss }
   );
 
 (*
@@ -602,7 +689,29 @@ begin
   V.States := [];
 end;
 
+function TempVarKindOf(T: TType): TTempVarKind;
+begin
+  case T.TypeCode of
+    typAnsiString: Result := tvkAStr;
+    typWideString: Result := tvkWStr;
+    typUnicodeString: Result := tvkUStr;
+    typShortString: Result := tvkSStr;
+    typDynamicArray: Result := tvkDynArray;
+    typInterface, typDispInterface: Result := tvkIntf;
+    typVariant, typOleVariant: Result := tvkVariant;
+  else
+    Result := tvkNormal;
+  end;
+end;
+
 { TCodeGen }
+
+procedure TCodeGen.AddAutoVar(T: TType; out Name, TyStr: string);
+begin
+  TyStr := TypeStr(T);
+  Name := FCurCntx.AddAutoVar(TyStr, T, TempVarKindOf(T));
+  TyStr := TyStr + '*';
+end;
 
 procedure TCodeGen.AddExternalSymbol(Sym: TSymbol);
 begin
@@ -712,6 +821,15 @@ begin
   FCntxList := TList.Create;
   FCntxList.Capacity := 16;
   NativeIntStr := 'i32';
+end;
+
+function TCodeGen.CurFinalProc: string;
+begin
+  with FLandingpads do
+  if Count > 0 then
+    Result := TTryBlock(Objects[Count - 1]).FinalProc
+  else
+    Result := '';
 end;
 
 function TCodeGen.CurLandingPad: string;
@@ -1137,9 +1255,7 @@ begin
   if argStr <> '' then
     Delete(argStr, Length(argStr) - 1, 2);
 
-  if not Assigned(Func.ReturnType) then
-    retty := 'void'
-  else if IsSpecialType(Func.ReturnType) then
+  if not Assigned(Func.ReturnType) or IsSpecialType(Func.ReturnType) then
     retty := 'void'
   else
     retty := TypeStr(Func.ReturnType);
@@ -1214,48 +1330,9 @@ end;
 
 procedure TCodeGen.EmitCast(var R: TVarInfo; RT, LT: TType);
 
-type
-  TCastKind = (
-    ckNone, ckError,
-    ckITrunc, ckSExt, ckZExt,
-    ckFpTrunc, ckFpExt,
-    ckFp2Si, ckFp2Ui, ckSi2Fp, ckUi2Fp,
-    ckCur2Si, {ckCur2Ui, }ckSi2Cur, ckUi2Cur, ckFp2Cur, ckCur2Fp,
-    {ckBol2Int, }ckInt2Bol, ckBol2Bol,
-    ckPtr2Int, ckInt2Ptr,
-    ckPtr2Ptr
-  );
-const
-  CastMaps: array[typShortint..typPWideChar, typShortint..typPWideChar] of TCastKind = (
-//            typShortint, typByte,     typSmallint, typWord,     typLongint,  typLongWord, typInt64,   typUInt64,   typComp,     typReal48,   typSingle,   typDouble,   typExtended, typCurrency, typBoolean,  typByteBool, typWordBool, typLongBool, typAnsiChar, typWideChar, typPointer,  typPAnsiChar, typPWideChar
-{typShortint} (ckNone,     ckNone,      ckSExt,      ckSExt,      ckSExt,      ckSExt,      ckSExt,     ckSExt,      ckSExt,      ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Cur,    ckInt2Bol,   ckNone,      ckSExt,      ckSExt,      ckNone,      ckSExt,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typByte    } (ckNone,     ckNone,      ckZExt,      ckZExt,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckNone,      ckZExt,      ckZExt,      ckNone,      ckZExt,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typSmallint} (ckITrunc,   ckITrunc,    ckNone,      ckNone,      ckSExt,      ckSExt,      ckSExt,     ckSExt,      ckSExt,      ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Cur,    ckInt2Bol,   ckITrunc,    ckNone,      ckSExt,      ckITrunc,    ckNone,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typWord    } (ckITrunc,   ckITrunc,    ckNone,      ckNone,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckITrunc,    ckNone,      ckZExt,      ckITrunc,    ckNone,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typLongint } (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckNone,      ckNone,      ckSExt,     ckSExt,      ckSExt,      ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Cur,    ckInt2Bol,   ckITrunc,    ckITrunc,    ckNone,      ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typLongWord} (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckNone,      ckNone,      ckZExt,     ckZExt,      ckZExt,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckITrunc,    ckITrunc,    ckNone,      ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typInt64   } (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckNone,     ckNone,      ckNone,      ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Cur,    ckInt2Bol,   ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typUInt64  } (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckNone,     ckNone,      ckNone,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typComp    } (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckNone,     ckNone,      ckNone,      ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Fp,     ckSi2Cur,    ckInt2Bol,   ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typReal48  } (ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckNone,      ckFpTrunc,   ckNone,      ckNone,      ckFp2Cur,    ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,      ckError),
-{typSingle  } (ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckFpExt,     ckNone,      ckFpExt,     ckFpExt,     ckFp2Cur,    ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,      ckError),
-{typDouble  } (ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckNone,      ckFpTrunc,   ckNone,      ckNone,      ckFp2Cur,    ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,      ckError),
-{typExtended} (ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,     ckFp2Ui,     ckFp2Si,    ckFp2Ui,     ckFp2Si,     ckNone,      ckFpTrunc,   ckNone,      ckNone,      ckFp2Cur,    ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,      ckError),
-{typCurrency} (ckError,    ckError,     ckError,     ckError,     ckError,     ckError,     ckError,    ckError,     ckCur2Si,    ckCur2Fp,    ckCur2Fp,    ckCur2Fp,    ckCur2Fp,    ckNone,      ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,     ckError,      ckError),
-{typBoolean } (ckNone,     ckNone,      ckZExt,      ckZExt,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckError,     ckError,     ckError,     ckError,     ckError,     ckNone,      ckBol2Bol,   ckBol2Bol,   ckBol2Bol,   ckZExt,      ckZExt,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typByteBool} (ckNone,     ckNone,      ckZExt,      ckZExt,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckError,     ckError,     ckError,     ckError,     ckError,     ckInt2Bol,   ckNone,      ckBol2Bol,   ckBol2Bol,   ckNone,      ckZExt,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typWordBool} (ckITrunc,   ckITrunc,    ckNone,      ckNone,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckError,     ckError,     ckError,     ckError,     ckError,     ckInt2Bol,   ckBol2Bol,   ckNone,      ckBol2Bol,   ckITrunc,    ckNone,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typLongBool} (ckITrunc,   ckITrunc,    ckITrunc,    ckITrunc,    ckNone,      ckNone,      ckZExt,     ckZExt,      ckZExt,      ckError,     ckError,     ckError,     ckError,     ckError,     ckInt2Bol,   ckBol2Bol,   ckBol2Bol,   ckNone,      ckITrunc,    ckITrunc,    ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typAnsiChar} (ckNone,     ckNone,      ckZExt,      ckZExt,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckNone,      ckZExt,      ckZExt,      ckNone,      ckZExt,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typWideChar} (ckITrunc,   ckITrunc,    ckNone,      ckNone,      ckZExt,      ckZExt,      ckZExt,     ckZExt,      ckZExt,      ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Fp,     ckUi2Cur,    ckInt2Bol,   ckITrunc,    ckNone,      ckZExt,      ckITrunc,    ckNone,      ckInt2Ptr,   ckInt2Ptr,    ckInt2Ptr),
-{typPointer } (ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckError,     ckError,     ckError,     ckError,     ckError,     ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Ptr,   ckPtr2Ptr,    ckPtr2Ptr),
-{typPAnsiChar}(ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckError,     ckError,     ckError,     ckError,     ckError,     ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Ptr,   ckNone,       ckPtr2Ptr),
-{typPWideChar}(ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,  ckPtr2Int,   ckPtr2Int,   ckError,     ckError,     ckError,     ckError,     ckError,     ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Int,   ckPtr2Ptr,   ckPtr2Ptr,    ckNone)
-  );
-
-const
-          // Signed.
-  ExtOp: array[Boolean] of string = ('zext', 'sext');
+//const
+//          // Signed.
+//  ExtOp: array[Boolean] of string = ('zext', 'sext');
 
   procedure EmitBitcast(var V: TVarInfo; const desT: string);
   var
@@ -1272,7 +1349,7 @@ const
     end;
   end;
 var
-//  Va: string;
+//  Va, TyStr: string;
   ck: TCastKind;
 begin
   if RT.TypeCode = typSubrange then RT := TSubrangeType(RT).BaseType;
@@ -1321,6 +1398,24 @@ begin
     else
       Assert(False, 'EmitCast, invalid cast');
     end;
+  end
+  else if (RT.TypeCode in [typAnsiString..typShortString])
+      and (LT.TypeCode in [typAnsiString..typShortString]) then
+  begin
+    ck := StrCastMaps[RT.TypeCode, LT.TypeCode];
+
+//    case ck of
+//      ckAs2Ws:
+//        begin
+//          AddAutoVar(aivtWStr, Va, TyStr);
+//          EmitCallSys(srWStrFromAStr, ['i16**', 'i8*'], [Va, R.Name]);
+//        end;
+//    end;
+    {, ckAs2Us, ckAs2Ss,
+    ckWs2As, ckWs2Us, ckWs2Ss,
+    ckUs2As, ckUs2Ws, ckUs2Ss,
+    ckSs2As, ckSs2Ws, ckSs2Us,}
+
   end
   else
   begin
@@ -1516,7 +1611,7 @@ procedure TCodeGen.EmitFunc(Func: TFunctionDecl);
           ty, Arg.Name, ty, s
         ]);
       end
-      else
+      else  // 把名称带出来，方便引用
         WriteCode('%%%s.addr = getelementptr %s* %%.fp, i32 0, i32 %d', [
           Arg.Name, FCurCntx.FrameTyStr, Arg.Index
         ])
@@ -1859,9 +1954,10 @@ procedure TCodeGen.EmitFunc(Func: TFunctionDecl);
     Sym: TSymbol;
     Arg: TArgument;
     V: TVariable;
-    NestRef: Boolean;
+    NestRef, HasAutoFreeVar: Boolean;
   begin
     NestRef := False;
+    HasAutoFreeVar := False;
     for i := 0 to Func.LocalSymbols.Count -1 do
     begin
       Sym := Func.LocalSymbols[i];
@@ -1893,6 +1989,8 @@ procedure TCodeGen.EmitFunc(Func: TFunctionDecl);
             end;
             if vsNestRef in V.States then
               NestRef := True;
+            if not HasAutoFreeVar then
+              HasAutoFreeVar := vsNeedFree in V.States;
           end;
 
         nkArgument:
@@ -1927,11 +2025,15 @@ procedure TCodeGen.EmitFunc(Func: TFunctionDecl);
 
             if asNestRef in Arg.States then
               NestRef := True;
+
+            if not HasAutoFreeVar then
+              HasAutoFreeVar := asNeedFree in Arg.States;
           end;
       end;
     end;
 
     FCurCntx.NeedFrame := NestRef or (FCurCntx.Level > 0);
+    FCurCntx.HasAutoFreeVar := HasAutoFreeVar;
   end;
 
   procedure SetupLocal(Func: TFunction);
@@ -2190,7 +2292,6 @@ lpad:
   var
     Va, FunTy: string;
   begin
-    // Now %.ctor.inst is instance of class
     EmitLoadVmtCast('%.Self', 'i8*', True,
       FFreeInstanceFunc, Va, FunTy);
     WriteCode('call %s void %s(i8* %%.Self)', [
@@ -2232,8 +2333,39 @@ lpad:
     WriteCode('unreachable');
   end;
 
+  procedure InsertCodes;
+  var
+    i: Integer;
+  begin
+    for i := 0 to Codes.Count - 1 do
+    begin
+      WriteCode(Codes[i]);
+    end;
+  end;
+
+  procedure WriteCallFinalize;
+  begin
+    WriteCode('call void %s.$clear(%s* %s)', [
+      FCurCntx.MangledName, FCurCntx.FrameTyStr, '%.fp'
+    ]);
+  end;
+
+  procedure WriteFinalizeProc;
+  var
+    S: string;
+  begin
+    S := Self.CurFinalProc;
+    WriteCode('define internal void %s.$clear(%s* %s)', [
+      FCurCntx.MangledName, FCurCntx.FrameTyStr, '%.fp'
+    ]);
+    WriteCode('{');
+
+    WriteCode('}');
+  end;
+
 var
   OldCntx: TEmitFuncContext;
+  OldCodes: TStringList;
   LinkAttr: string;
 begin
   if Func.NodeKind = nkExternalFunc then
@@ -2262,11 +2394,21 @@ begin
     FCurCntx.IsSafecall := Func.CallConvention = ccSafecall;
     FCurCntx.RetConverted := not FCurCntx.IsCtor and not FCurCntx.IsDtor
                         and Assigned(Func.ReturnType)
-                        and IsSpecialType(Func.ReturnType)
-                        or (FCurCntx.IsSafecall and Assigned(Func.ReturnType));
+                        and (IsSpecialType(Func.ReturnType)
+                              or (FCurCntx.IsSafecall)
+                            );
 
     CheckLocal(FCurCntx.Func);
     SetupLocal(TFunction(Func));
+
+    OldCodes := Self.FCodes;
+    Self.FCodes := FCurCntx.Codes;
+    try
+      EmitStmt(TFunction(Func).StartStmt);
+    finally
+      Self.FCodes := OldCodes;
+    end;
+
     if saInternal in Func.Attr then LinkAttr := 'internal ';
     WriteCode('define ' + LinkAttr + FuncDecl(Func, True));
     WriteCode('{');
@@ -2280,14 +2422,18 @@ begin
     else if FCurCntx.IsSafecall then
       WriteSafeCallEnter;
 
-    EmitStmt(TFunction(Func).StartStmt);
+    // insert body codes
+    InsertCodes;
 
     if FCurCntx.IsCtor then
       WriteCtorAfter
     else if FCurCntx.IsDtor then
       WriteDtorExit;
 
+    // 这个要单独成一个函数
     WriteLocalFree(TFunction(Func));
+//    if FCurCntx.HasAutoFreeVar then WriteFinalProc;
+
     WriteRet;
     if FCurCntx.IsCtor then
       WriteCtorExit
@@ -2297,6 +2443,7 @@ begin
     WriteCode('}');
     WriteCode('');
 
+    WriteFinalizeProc;
     WriteNested(TFunction(Func));
   finally
     FCurCntx.Free;
@@ -2313,8 +2460,8 @@ var
   LV, ArgV: TVarInfo;
   ArgE: TExpr;
   Arg: TArgument;
-  RetVar, RetTyStr, ArgStr,
-  FunName, SelfPtr, {FunPtr, }Va1, Va2: string;
+  RetVar, RetStr, RetTyStr, ArgStr,
+  FunName, SelfPtr, Va1, Va2: string;
   ParentT: TType;
   IsMeth, IsVirtual, IsSafecall,
   IsNested, IsCtor, IsDtor, RetConv: Boolean;
@@ -2331,8 +2478,7 @@ begin
   IsMeth := FunT.IsMethodPointer;
   IsSafecall := FunT.CallConvention = ccSafeCall;
   RetConv := Assigned(FunT.ReturnType)
-             and IsSpecialType(FunT.ReturnType)
-             or (IsSafecall and Assigned(FunT.ReturnType));
+             and (IsSpecialType(FunT.ReturnType) or IsSafecall);
 
   if Assigned(Fun) then
   begin
@@ -2568,14 +2714,21 @@ begin
       if ArgE <> nil then
         EmitCast(ArgV, ArgE.Typ, Arg.ArgType);
       ArgStr := ArgStr + Format('%s %s, ', [ArgV.TyStr, ArgV.Name]);
+    // todo 1: 需要取openarray的 high
       if ArgE <> nil then
         ArgE := TExpr(ArgE.Next);
     end;
 
-    // todo 1: 需要取openarray的 high
-    if RetConv then
+    if RetConv and Assigned(FunT.ReturnType) then
     begin
-      
+      // 这里需要一个局部变量，传它的地址到被调用函数中
+      // 如果未预设，则创建一个
+      if Result.Name = '' then
+      begin
+        AddAutoVar(FunT.ReturnType, Result.Name, Result.TyStr);
+        Result.States := [vasAddrOfVar];
+      end;
+      ArgStr := ArgStr + Format('%s %s, ', [Result.TyStr, Result.Name]);
     end;
   end;
 
@@ -2584,23 +2737,26 @@ begin
 
   if IsSafecall then
   begin
-    VarInfoInit(Result);
-    Result.Name := TempVar;
-    Result.TyStr := 'i32';
-    RetVar := Result.Name + ' = ';
-    RetTyStr := Result.TyStr;
+//    VarInfoInit(Result);
+//    Result.Name := TempVar;
+//    Result.TyStr := 'i32';  \
+    RetVar := TempVar;
+    RetStr := RetVar + ' = ';
+    RetTyStr := 'i32';
   end
   else if Assigned(FunT.ReturnType) and not RetConv then
   begin
     VarInfoInit(Result);
     Result.Name := TempVar;
     Result.TyStr := TypeStr(FunT.ReturnType);
-    RetVar := Result.Name + ' = ';
+    RetVar := Result.Name;
+    RetStr := Result.Name + ' = ';
     RetTyStr := Result.TyStr;
   end
   else
   begin
     RetVar := '';
+    RetStr := '';
     RetTyStr := 'void';
   end;
 
@@ -2610,11 +2766,11 @@ begin
     CC := FunT.CallConvention;
 
   WriteCode('%scall %s %s %s(%s)', [
-    RetVar, CCStr(CC), RetTyStr, FunName, ArgStr
+    RetStr, CCStr(CC), RetTyStr, FunName, ArgStr
   ]);
 
   if IsSafecall then
-    EmitCallSys(srSafecallCheck, [Result.TyStr], [Result.Name]);
+    EmitCallSys(srSafecallCheck, [RetTyStr], [RetVar]);
 end;
 
 procedure TCodeGen.EmitGlobalVarDecl(V: TVariable);
@@ -3379,7 +3535,6 @@ end;
 
 procedure TCodeGen.EmitOp_Call(E: TBinaryExpr; var Result: TVarInfo);
 var
-//  L: TExpr;
   FunT: TProceduralType;
   Ref: TSymbol;
 begin
@@ -4605,86 +4760,194 @@ procedure TCodeGen.EmitStmt_Assign(Stmt: TAssignmentStmt);
   // todo 1: 打算在Parser阶段就把对属性的赋值转为函数调用。
 var
   LV, RV: TVarInfo;
+  L, R: TExpr;
+  Ref: TSymbol;
 //  LT, RT: TType;
- (*
-  procedure VarAssign;
+(*
+  赋值给属性
+    如果是直接访问字段，等同以下两种。
+    如果是Setter，要转为函数调用。
+
+  赋值给特定类型（需要调用其它函数完成赋值操作）
+    右边是函数调用，那边左边的表达式需要当成参数传入
+      如果两边不匹配，但能够转换，需要创建一个临时变量，以此传入函数，再执行转换
+    右边是变量，直接执行转换
+
+  赋值给简单类型。
+    如果右边是Safecall，也需要当成参数传入，
+      如果两边不匹配，也要如上面处理
+    如果是变量，直接执行转换和赋值
+*)
+
+  procedure CallSetter(Prop: TSymbol);
   begin
-    EmitExpr(Stmt.Right, RV);
+  {  if Prop.CountOfArgs > 0 then
+    begin
+
+    end
+    else
+    begin
+
+    end;}
+  end;
+
+  procedure SpecialAssignDirectly(var LV, RV: TVarInfo;
+      LT, RT: TType; IsLocal: Boolean);
+  begin
     case LT.TypeCode of
       typAnsiString:
         case RT.TypeCode of
           typAnsiString:
-            EmitCallSys(srAStrAsg, ['i8**', 'i8**'], [LV.Name, RV.Name]);
+            EmitCallSys(srAStrAsg, [LV.TyStr, RV.TyStr], [LV.Name, RV.Name]);
+          typWideString:
+            EmitCallSys(srAStrFromWStr, [LV.TyStr, RV.TyStr], [LV.Name, RV.Name]);
+          typUnicodeString:
+            EmitCallSys(srAStrFromUStr, [LV.TyStr, RV.TyStr], [LV.Name, RV.Name]);
+          typShortString:
+            EmitCallSys(srAStrFromSStr, [LV.TyStr, RV.TyStr],
+              [LV.Name, RV.Name]);
+          typVariant, typOleVariant:
+            EmitCallSys(srVar2AStr, [RV.TyStr, LV.TyStr], [RV.Name, LV.Name]);
+        else
+          Assert(False);
+        end;
+      typWideString:
+        case RT.TypeCode of
+          typAnsiString:
+            EmitCallSys(srWStrFromAStr, [LV.TyStr, RV.TyStr], [LV.Name, RV.Name]);
+          typWideString:
+            EmitCallSys(srWStrAsg, [LV.TyStr, RV.TyStr], [LV.Name, RV.Name]);
+          typUnicodeString:
+            EmitCallSys(srWStrFromUStr, [LV.TyStr, RV.TyStr], [LV.Name, RV.Name]);
+          typShortString:
+            EmitCallSys(srWStrFromSStr, [LV.TyStr, RV.TyStr, 'i32'], [LV.Name, RV.Name]);
+          typVariant, typOleVariant:
+            EmitCallSys(srVar2WStr, [RV.TyStr, LV.TyStr], [RV.Name, LV.Name]);
+        else
+          Assert(False);
         end;
     end;
   end;
 
   procedure SpecialAssign;
+  var
+    IsLocal: Boolean;
+    Ref: TSymbol;
   begin
-    if Stmt.Right.OpCode = opCall then
+    // 右边是函数调用
+    Ref := L.GetReference;
+    IsLocal := (Ref <> nil) and (Ref.NodeKind in [nkVariable, nkArgument]);
+    if R.OpCode = opCALL then
     begin
+      //
+      if (R.Typ.TypeCode = L.Typ.TypeCode) and IsLocal then
+      begin
+        // 直接传入。只有局部变量可以这样传。
+        EmitExpr(L, LV);
+        EnsurePtr(LV.TyStr, 'EmitStmt_Assign');
+        EmitOp_Call(TBinaryExpr(R), LV);
+      end
+      else
+      begin
+        // 创建一个变量，用于接收结果
+        VarInfoInit(RV);
+        EmitOp_Call(TBinaryExpr(R), RV);
+
+        VarInfoInit(LV);
+        EmitExpr(L, LV);
+        // 再对结果进行转换
+        SpecialAssignDirectly(LV, RV, L.Typ, R.Typ, IsLocal);
+      end;
     end
     else
-      VarAssign;
-  end;  *)
+    begin
+      // 直接进行转换
+      EmitExpr(L, LV);
+      EmitExpr(R, RV);
+      SpecialAssignDirectly(LV, RV, L.Typ, R.Typ, IsLocal);
+    end;
+  end;
+
+  procedure SimpleAssign;
+  begin
+    EmitExpr(Stmt.Left, LV);
+    EmitExpr(Stmt.Right, RV);
+
+    EmitOp_VarLoad(RV);
+
+    if (cdRangeChecks in Stmt.Left.Switches)
+      and IsRangeCheckNeeded(Stmt.Right.Typ, Stmt.Left.Typ) then
+    begin
+      EmitRangeCheck(RV, Stmt.Right.Typ, Stmt.Left.Typ);
+    end;
+
+    EmitCast(RV, Stmt.Right.Typ, Stmt.Left.Typ);
+    if (Stmt.Right.Typ.TypeCode = typBoolean) and (RV.TyStr = 'i1') then
+      EmitIns_Bit2Bol(RV);
+    WriteCode('store %s %s, %s %s', [
+      RV.TyStr, RV.Name, LV.TyStr, LV.Name
+    ]);
+  end;
+  
+  procedure FieldAssign(P: TProperty);
+  begin
+  end;
+
+  procedure AccessorAssign(P: TProperty);
+  begin
+  end;
+
 begin
 //  LT := Stmt.Left.Typ;
 //  RT := Stmt.Right.Typ;
 
-  EmitExpr(Stmt.Left, LV);
-(*  if IsSpecialType(LT) then
+  L := Stmt.Left;
+  R := Stmt.Right;
+  if eaArrayProp in L.Attr then
   begin
-    SpecialAssign;
-//    if Stmt.Right.OpCode = opCall then
-//    begin
-//      FLeftVal := @LV;
-//      EmitOp_Call(TBinaryExpr(Stmt.Right, RV));
-//      FLeftVal := nil;
-//    end
-    Exit;
-  end;*)
-  EmitExpr(Stmt.Right, RV);
+    Ref := L.GetReference;
+    Assert(Ref <> nil);
+    Assert(Ref.NodeKind in [nkProperty, nkIntfProperty]);
 
-  EmitOp_VarLoad(RV);
-
-  if (cdRangeChecks in Stmt.Left.Switches)
-    and IsRangeCheckNeeded(Stmt.Right.Typ, Stmt.Left.Typ) then
+    case Ref.NodeKind of
+      nkProperty:
+        begin
+          Assert(TProperty(Ref).Setter <> nil);
+          case TProperty(Ref).Setter.NodeKind of
+            nkMethod:
+              CallSetter(TProperty(Ref));
+            nkField:
+              FieldAssign(TProperty(Ref));
+            nkAccessor:
+              AccessorAssign(TProperty(Ref));
+          else
+            Assert(False, 'EmitStmt_Assign, invalid property setter');
+          end;
+        end;
+      nkIntfProperty:
+        begin
+          CallSetter(TIntfProperty(Ref));
+        end;
+    end;
+  end
+  else if IsSpecialType(L.Typ) then
   begin
-    EmitRangeCheck(RV, Stmt.Right.Typ, Stmt.Left.Typ);
-  end;
+{    if L.Typ in [typAnsiString..typShortString, typVariant, typOleVariant] then
+      StrAssign
+    else}
+      SpecialAssign;
+  end
+  else
+    SimpleAssign;
 
-  EmitCast(RV, Stmt.Right.Typ, Stmt.Left.Typ);
-  if (Stmt.Right.Typ.TypeCode = typBoolean) and (RV.TyStr = 'i1') then
-    EmitIns_Bit2Bol(RV);
-  WriteCode('store %s %s, %s %s', [
-    RV.TyStr, RV.Name, LV.TyStr, LV.Name
-  ]);
 end;
 
 procedure TCodeGen.EmitStmt_Call(Stmt: TCallStmt);
 var
-  E: TBinaryExpr;
   V: TVarInfo;
-  FunT: TProceduralType;
-  Ref: TSymbol;
 begin
-  E := TBinaryExpr(Stmt.CallExpr);
-  Ref := E.Left.GetReference;
-  if Assigned(Ref) and (Ref.NodeKind = nkBuiltinFunc) then
-    EmitBuiltin(E, TBuiltinFunction(Ref), TUnaryExpr(E.Right), V)
-  else begin
-    if Assigned(Ref) and (Ref.NodeKind in [nkFunc, nkMethod, nkExternalFunc]) then
-    begin
-      FunT := TFunctionDecl(Ref).ProceduralType;
-      EmitFuncCall(E.Left, E.Right, TFunctionDecl(Ref), FunT, V);
-    end
-    else begin
-      Assert(E.Left.Typ.TypeCode = typProcedural);
-      FunT := TProceduralType(E.Left.Typ);
-      EmitFuncCall(E.Left, E.Right, nil, FunT, V);
-    end;
-
-  end;
+  VarInfoInit(V);
+  EmitOp_Call(TBinaryExpr(Stmt.CallExpr), V);
 end;
 
 procedure TCodeGen.EmitStmt_For(Stmt: TForStmt);
@@ -5136,9 +5399,16 @@ begin
     ]));
 end;
 
-procedure TCodeGen.EnterLandingpad(const S: string);
+procedure TCodeGen.EnterLandingpad(const LPad: string; IsExcept: Boolean);
+var
+  Block: TTryBlock;
 begin
-  FLandingPads.Add(S);
+  block := TTryBlock.Create;
+  Block.LandingPad := LPad;
+  if not IsExcept then
+    Block.FinalProc := Format('lpad.final.%d', [FCurCntx.PadID]);
+  FLandingPads.AddObject(LPad, block);
+  Inc(FCurCntx.PadID);
 end;
 
 function TCodeGen.FuncDecl(F: TFunctionDecl; NeedArgName: Boolean;
@@ -5158,8 +5428,8 @@ begin
   isDtor := (F.NodeKind = nkMethod) and (TMethod(F).MethodKind = mkDestructor);
   isSafecall := F.CallConvention = ccSafeCall;
   retConvert := not isCtor and not isDtor and (F.ReturnType <> nil)
-               and IsSpecialType(F.ReturnType)
-               or (isSafecall and Assigned(F.ReturnType));
+               and (IsSpecialType(F.ReturnType) or isSafecall);
+
   s := '';
   if isMeth then
   begin
@@ -5269,7 +5539,11 @@ end;
 procedure TCodeGen.LeaveLandingpad;
 begin
   with FLandingPads do
-    if Count > 0 then Delete(Count - 1);
+    if Count > 0 then
+    begin
+      Objects[Count - 1].Free;
+      Delete(Count - 1);
+    end;
 end;
 
 function TCodeGen.ProcTypeStr(T: TProceduralType; const Name: string): string;
@@ -5283,8 +5557,7 @@ begin
   // safecall要返回i32，并且把原先返回的(如果有的话)当成最后一个参数
   isSafecall := T.CallConvention = ccSafeCall;
   convResult := (T.MethodKind = mkNormal) and (T.ReturnType <> nil)
-               and IsSpecialType(T.ReturnType)
-               or (isSafecall and Assigned(T.ReturnType));
+               and (IsSpecialType(T.ReturnType) or isSafecall);
 
   s := '';
   if T.IsMethodPointer then
@@ -5484,7 +5757,8 @@ end;
 
 { TEmitFuncContext }
 
-procedure TEmitFuncContext.AddTempVar(const Name: string; vt: TAutoInitVarType);
+function TEmitFuncContext.AddAutoVar(const TyStr: string; T: TType;
+  Kind: TTempVarKind): string;
 var
   Temp: TTempVarInfo;
 begin
@@ -5494,9 +5768,13 @@ begin
     TempInitVars.Capacity := 10;
   end;
   Temp := TTempVarInfo.Create;
-  Temp.Name := Name;
-  Temp.Typ := vt;
+  Temp.Name := Format('%%.tmp%d', [AutoID]);
+  Temp.Kind := Kind;
+  Temp.TyStr := TyStr;
+  Temp.Typ := T;
   TempInitVars.Add(Temp);
+  Result := Temp.Name;
+  Inc(AutoID);
 end;
 
 procedure TEmitFuncContext.ClearTempVars;
@@ -5509,10 +5787,16 @@ begin
   TempInitVars.Clear;
 end;
 
+constructor TEmitFuncContext.Create;
+begin
+  Codes := TStringList.Create;
+end;
+
 destructor TEmitFuncContext.Destroy;
 begin
   ClearTempVars;
   TempInitVars.Free;
+  Codes.Free;
   inherited;
 end;
 

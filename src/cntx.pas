@@ -70,8 +70,18 @@ type
     srUStrFromPAChLen, srUStrFromPWCh, srUStrFromPWChLen,
     srUStrFromAArray, srUStrFromWArray, srUStrCat, srUStrCat3, srUStrCatN,
 
-    srVarClr, srVarAddRef, srVarOp, srVarNot, srVarNeg, srVarCopy,
+    srSStrComp, srSStrEqual, srSStrAsg,
+    srSStrCopy, srSStrDelete, srSStrInsert, srSStrFromAStr, srSStrFromWStr,
+    srSStrFromUStr, srSStrFromACh, srSStrFromWCh, srSStrFromPACh,
+    srSStrFromPAChLen, srSStrFromPWCh, srSStrFromPWChLen,
+    srSStrFromAArray, srSStrFromWArray, srSStrCat, srSStrCat3, srSStrCatN,
 
+    srVarClr, srVarAddRef, srVarOp, srVarNot, srVarNeg, srVarCopy,
+    srVar2AStr, srVar2WStr, srVar2UStr, srVar2SStr,
+    srVar2Shortint, srVar2Byte, srVar2Smallint, srVar2Word,
+    srVar2Longint, srVar2LongWord, srVar2Int64, srVar2UInt64,
+    srVar2Single, srVar2Double, srVar2Currency, srVar2DateTime,
+    
     srRecordClr, srRecordInit, srRecordAddRef,
 
     srArrayClr, srArrayInit, srArrayAddRef,
@@ -580,7 +590,17 @@ const
     '_UStrFromPAChLen', '_UStrFromPWCh', '_UStrFromPWChLen',
     '_UStrFromAArray', '_UStrFromWArray', '_UStrCat', '_UStrCat3', '_UStrCatN',
 
+    '_SStrComp', '_SStrEqual', '_SStrAsg',
+    '_SStrCopy', '_SStrDelete', '_SStrInsert', '_SStrFromAStr', '_SStrFromWStr',
+    '_SStrFromUStr', '_SStrFromACh', '_SStrFromWCh', '_SStrFromPACh',
+    '_SStrFromPAChLen', '_SStrFromPWCh', '_SStrFromPWChLen',
+    '_SStrFromAArray', '_SStrFromWArray', '_SStrCat', '_SStrCat3', '_SStrCatN',
+
     '_VarClr', '_VarAddRef', '_VarOp', '_VarNot', '_VarNeg', '_VarCopy',
+    '_Var2AStr', '_Var2WStr', '_Var2UStr', '_Var2SStr',
+    '_Var2Shortint', '_Var2Byte', '_Var2Smallint', '_Var2Word',
+    '_Var2Longint', '_Var2LongWord', '_Var2Int64', '_Var2UInt64',
+    '_Var2Single', '_Var2Double', '_Var2Currency', '_Var2DateTime',
 
     '_RecordClr', '_RecordInit', '_RecordAddRef',
 

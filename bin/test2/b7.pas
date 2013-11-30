@@ -35,10 +35,15 @@ procedure call_safecall;
 
 implementation
 
-{function test_str(s: string): string;
+function test_str(s: string): string;
 begin
 	result := s;
-end;}
+end;
+
+procedure test_str2(var s: string; const s2: string);
+begin
+	s := test_str(s2);
+end;
 
 procedure safecall_proc; safecall;
 begin

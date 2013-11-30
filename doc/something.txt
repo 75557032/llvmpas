@@ -61,10 +61,10 @@ void Destroy(void* Self, char outterMost)
 		FreeInstance(Self);
 }
 
-二、
+二、内嵌函数
 
 
-
+三、字符串、Variant、接口
 
 
 

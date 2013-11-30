@@ -1221,7 +1221,9 @@ type
       bfDispose, bfExclude, bfExit, bfFinalize, bfFreeMem, bfGetMem,
       bfHi, bfHigh, bfInc, bfInclude, bfInitialize, bfLength, bfLo,
       bfLow, bfNew, bfOdd, bfOrd, bfPred, bfPtr, bfRound, bfSucc, bfSetLength,
-      bfSizeOf, bfSwap, bfTrunc, bfTypeInfo);
+      bfSizeOf, bfSwap, bfTrunc, bfTypeInfo
+      //bfFillChar, bfMove, bfVal
+  );
 
   TBuiltinFunction = class(TSymbol)
   public
@@ -1242,7 +1244,22 @@ type
     skRaiseStmt,
     skAssignmentStmt,
     skCallStmt,
-    skGotoStmt);
+    skGotoStmt,
+
+    skCtorInit,
+    skCtorAfter,
+    skDtorBefore,
+    skDtorInit,
+    skLocalInit,
+    skLocalUninit,
+    skHandleExcept,
+    skStrCat,
+    skStrCast,
+    skVarOp,
+    skVarCast,
+    skIntfCast,
+    skOAInit
+  );
 
   // statement classes
   TStatement = class(TAstNode)

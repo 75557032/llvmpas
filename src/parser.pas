@@ -5317,7 +5317,8 @@ function TParser.ParseProperty(Parent: TType; IsStatic: Boolean): TProperty;
     if t1.TypeCode = typSubrange then t1 := TSubrangeType(t1).BaseType;
     if t2.TypeCode = typSubrange then t2 := TSubrangeType(t2).BaseType;
 
-    Result := t1 = t2;
+  //  Result := t1 = t2;
+    Result := t1.Equals(t2);
   end;
 
   function CheckPropStatic(Prop: TProperty; Elem: TSymbol): Boolean;
@@ -5501,6 +5502,8 @@ function TParser.ParseProperty(Parent: TType; IsStatic: Boolean): TProperty;
     // 4.class property的Accessor必须是class var或class method
     // 5.Getter 和 setter必须有一个不为nil
     // 6.Array property才能有default
+
+    // todo 2: getter/setter/stored 需要使用ccDefault
 
     if Prop.HasIndexSpec and (Prop.CountOfArgs > 0) then
       ParseError(Prop.Coord, 'Array property not allow index directive')
