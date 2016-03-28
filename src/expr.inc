@@ -63,36 +63,11 @@ begin
   end;
 end;
 
+// todo 1:直接裸露的函数符号，要么扩展为调用，要么视为取函数指针，应该前置@号
+
 function TParser.CheckExpr(var Expr: TExpr): Boolean;
 
-const
-  AddOpResult: array[typShortint..typCurrency, typShortint..typCurrency] of TTypeCode =
-  (
-              // typShortint, typByte, typSmallint, typWord, typLongint, typLongWord,   typInt64, typUInt64, typComp, typReal48, typSingle, typDouble, typExtended, typCurrency
-{typShortint} (typLongint, typLongint, typLongint, typLongint, typLongint, typInt64,    typInt64, typUInt64, typDouble, typDouble, typDouble, typDouble, typDouble, typCurrency),
-{typByte    } (typLongint, typLongint, typLongint, typLongint, typLongint, typLongWord, typInt64, typUInt64, typDouble, typDouble, typDouble, typDouble, typDouble, typCurrency),
-{typSmallint} (typLongint, typLongint, typLongint, typLongint, typLongint, typInt64,    typInt64, typUInt64, typDouble, typDouble, typDouble, typDouble, typDouble, typCurrency),
-{typWord    } (typLongint, typLongint, typLongint, typLongint, typLongint, typLongWord, typInt64, typUInt64, typDouble, typDouble, typDouble, typDouble, typDouble, typCurrency),
-{typLongint } (typLongint, typLongint, typLongint, typLongint, typLongint, typInt64,    typInt64, typUInt64, typDouble, typDouble, typDouble, typDouble, typDouble, typCurrency),
-{typLongWord} (typInt64,   typLongWord, typInt64,  typLongWord, typInt64,  typLongWord, typInt64, typUInt64, typDouble, typDouble, typDouble, typDouble, typDouble, typCurrency),
-{typInt64   } (typInt64,   typInt64,   typInt64,   typInt64,   typInt64,   typInt64,    typInt64, typUInt64, typDouble, typDouble, typDouble, typDouble, typDouble, typCurrency),
-{typUInt64  } (typUInt64,  typUInt64,  typUInt64,  typUInt64,  typUInt64,  typUInt64,  typUInt64, typUInt64, typDouble, typDouble, typDouble, typDouble, typDouble, typCurrency),
-{typComp    } (typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble),
-{typReal48  } (typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble),
-{typSingle  } (typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble),
-{typDouble  } (typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble),
-{typExtended} (typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble,  typDouble),
-{typCurrency} (typCurrency,typCurrency,typCurrency,typCurrency,typCurrency,typCurrency,typCurrency,typCurrency,typCurrency,typCurrency,typCurrency,typCurrency,typCurrency,typCurrency)
-  );
-
-  function CreateCastExpr(Typ: TType; Expr: TExpr): TExpr;
-  var
-    L: TSymbolExpr;
-  begin
-    L := CreateSymbolExpr(Typ.Name);
-    L.Reference := Typ;
-    Result := CreateBinaryExpr(opCAST, L, Expr);
-  end;
+  procedure CheckConst(E: TConstExpr); forward;
 
   procedure IncompatibleErr(const Coord: TAstNodeCoord; t1, t2: TTypeCode);
   begin
@@ -105,8 +80,16 @@ const
   function NotAllowNode(Kinds: TAstNodeKinds; Expr: TExpr): Boolean;
   var
     Invalid: Boolean;
+    Sym: TSymbol;
   begin
     Invalid := False;
+    Sym := Expr.GetReference;
+    if Sym <> nil then
+    begin
+      Invalid := Sym.NodeKind in Kinds;
+    end;
+
+    {Invalid := False;
     case Expr.OpCode of
       opSYMBOL:
         if TSymbolExpr(Expr).Reference <> nil then
@@ -118,7 +101,7 @@ const
           if TSymbolExpr(Expr).Reference <> nil then
             Invalid := TSymbolExpr(Expr).Reference.NodeKind in Kinds;
         end;
-    end;
+    end;}
 
     if Invalid then
     begin
@@ -138,28 +121,93 @@ const
     Result := NotAllowNode(Kinds, Expr);
   end;
 
+  procedure SubstituteExpr(Old, New: TExpr);
+  var
+    P: TExpr;
+    Kind: Integer;
+  begin
+    P := Old.Parent;
+    if P = nil then Exit;
+
+    Kind := 0;
+    case OpKinds[P.OpCode] of
+      opkBinary:
+        if TBinaryExpr(P).Left = Old then
+          Kind := 1
+        else
+          Kind := 2;
+
+      opkUnary:
+        Kind := 3;
+
+      opkList:
+        Kind := 4;
+    end;
+
+//    Old.Detach;
+    case Kind of
+      1: TBinaryExpr(P).Left := New;
+      2: TBinaryExpr(P).Right := New;
+      3: TUnaryExpr(P).Operand := New;
+      4: begin
+        Kind := TListExpr(P).IndexOf(Old);
+        TListExpr(P).Replace(Kind, New);
+      end;
+    end;
+  end;
+
+  // 尝试常量求值，如果成功使用新的TConstExpr替代原来的表达式
+  // 如果失败，返回原来的表达式
+  function ConstantFold(E: TExpr): TExpr;
+  var
+    C: TConstExpr;
+  begin
+    C := Self.CreateConstExpr(opCONST);
+    if Self.TryEvalConst(E, C.Value) then
+    begin
+      if (C.Value.VT >= vtPtr) or (C.Value.VT = vtSet) then
+      begin
+        C.Typ := E.Typ;
+        Include(C.Attr, eaConst);
+      end
+      else
+        CheckConst(C);
+      SubstituteExpr(E, C);
+      Self.ReleaseExpr(E);
+      Result := C;
+    end
+    else
+    begin
+      Self.ReleaseExpr(C);
+      Result := E;
+    end;
+  end;
+
   procedure CheckOpenArrayConstructor(Expr: TUnaryExpr);
   var
+    List: TListExpr;
     E: TExpr;
+    I: Integer;
     Ref: TSymbol;
   begin
-    E := Expr.Operand; // opLIST
-    if E <> nil then
+    List := TListExpr(Expr.Operand); // opLIST
+    Assert(List <> nil, 'CheckOpenArrayConstructor');
+
+    // 因为可能涉及函数重载，此处仅做基本的检查。
+    // 具体的检查要到延迟到CheckArrayOfConst CheckArrayOfType
+    for I := 0 to List.Count - 1 do
     begin
-      E := TUnaryExpr(E).Operand; // first element of List expr
-      while E <> nil do
+      E := List.Items[I];
+      Ref := E.GetReference;
+      if (Ref.NodeKind = nkType) and (TType(Ref).TypeCode <> typClass) then
+        ParseError(E.Coord, SErr_InvalidOperand);
+    //  NotAllowNode([nkType], E);
+      if not (E.Typ.TypeCode in [typInt, typNumeric, typString, typChar,
+          typBool, typPAnsiChar, typPWideChar, typVariant,
+          typProcedural, typRecord, typClassRef, typSubrange,
+          typArray, typDynamicArray]) then
       begin
-        Ref := E.GetReference;
-        if (Ref.NodeKind = nkType) and (TType(Ref).TypeCode <> typClass) then
-          ParseError(E.Coord, SErr_InvalidOperand);
-      //  NotAllowNode([nkType], E);
-        if not (E.Typ.TypeCode in [typShortint..typOleVariant,
-            typProcedural, typRecord, typClassRef, typSubrange,
-            typArray, typDynamicArray]) then
-        begin
-          ParseError(E.Coord, SErr_InvalidOpenArrayEl);
-        end;
-        E := TExpr(E.Next);
+        ParseError(E.Coord, SErr_InvalidOpenArrayEl);
       end;
     end;
     Expr.Typ := FContext.FVarOpenArrayType;
@@ -175,61 +223,72 @@ const
       Result := E.Parent.OpCode in SetOps;
   end;
 
-  // 检查opSET. 返回true表示可以视为Set
+  // 检查 opSET 并决定类型 返回true表示可以视为Set
   function CheckSetType(Expr: TUnaryExpr): Boolean;
   var
+    List: TListExpr;
     E: TExpr;
+    I: Integer;
     T, T2: TType;
+    AllConst: Boolean;
   begin
-    E := Expr.Operand; // opLIST
-    if E <> nil then
+    List := TListExpr(Expr.Operand); // opLIST
+    Assert(List <> nil, 'CheckSetType');
+    AllConst := True;
+    if List.Count > 0 then
     begin
-      E := TUnaryExpr(E).Operand; // first element of List expr
-      if E <> nil then
-      begin
-        T := E.Typ.NormalType;
+      E := List.Items[0];
+      T := E.Typ.NormalType;
 
-        case T.TypeCode of
-          typBoolean: Expr.Typ := FContext.FBoolSetType;
+      if AllConst then AllConst := eaConst in E.Attr;
 
-          typAnsiChar, // 先假设WideChar是合法
-          typWideChar: Expr.Typ := FContext.FCharSetType;
+      case T.TypeCode of
+        typBool: Expr.Typ := FContext.FBoolSetType;
 
-          typEnum:
-            Expr.Typ := GetSetType(TEnumType(T));
-        else
-          if T.IsInteger then
-            Expr.Typ := FContext.FByteSetType
-          else begin
-            Result := False;
-            Exit;
-          end;
+        typChar: // 先假设WideChar是合法
+          Expr.Typ := FContext.FCharSetType;
+
+        typEnum:
+          Expr.Typ := GetSetType(TEnumType(T));
+      else
+        if T.IsInteger then
+          Expr.Typ := FContext.FByteSetType
+        else begin
+          Result := False;
+          Exit;
         end;
+      end;
 
-        Expr.Operand.Typ := Expr.Typ;
+      Expr.Operand.Typ := Expr.Typ;
 
-        if T.TypeCode = typWideChar then
-          T := FContext.FTypes[typAnsiChar];
-
-        while E <> nil do
+      for I := 1 to List.Count - 1 do
+      begin
+        E := List.Items[I];
+        if AllConst then AllConst := eaConst in E.Attr;
+        T2 := E.Typ;
+    // todo 1: 需要检查左右值是否超过0..255
+        if T2.TypeCode = typSubrange then T2 := TSubrangeType(T2).BaseType;
+        if not ((T = T2) or (T.IsInteger and T2.IsInteger)) then
         begin
-          T2 := E.Typ;
-          if T2.TypeCode = typSubrange then T2 := TSubrangeType(T2).BaseType;
-          if T <> T2 then
-          begin
-            Result := False;
-            Exit;
-          end;
-          E := TExpr(E.Next);
+          Result := False;
+          Exit;
         end;
       end;
     end;
+
+    if Expr.Typ = nil then
+      Expr.Typ := FContext.FEmptySetType;
+    if AllConst then Include(Expr.Attr, eaConst);
     Result := True;
   end;
 
-  procedure ResolveSetType(Expr: TUnaryExpr);
+  procedure CheckSetOp(Expr: TUnaryExpr);
   begin
+    // 有两种情形需要set constructor:
+    // open array, set
     NotAllowNode([nkType], Expr.Operand);
+
+    // 因为可能涉及函数重载，此处仅做基本的检查。
     if not CheckSetType(Expr) then
     begin
       if NeedSetType(Expr) then
@@ -244,7 +303,7 @@ const
     end;
   end;
 
-  function NeedExpand(T1, T2: TType): Boolean; forward;
+  function NeedExpand(T1, T2: TIntType): Boolean; forward;
 
   procedure CheckRelOp(bin: TBinaryExpr);
   var
@@ -256,67 +315,113 @@ const
 }
     NotAllowNode([nkType], bin.Left);
     NotAllowNode([nkType], bin.Right);
-    bin.Typ := FContext.FTypes[typBoolean];
-    L := bin.Left.Typ;
-    R := bin.Right.Typ;
-    if L.TypeCode = typSubrange then
-      L := TSubrangeType(L).BaseType;
-    if R.TypeCode = typSubrange then
-      R := TSubrangeType(L).BaseType;
+    bin.Typ := FContext.FBooleanType;
+    L := bin.Left.Typ.NormalType;
+    R := bin.Right.Typ.NormalType;
 
-    case L.TypeCode of
-      typShortint..typUInt64:
-        case R.TypeCode of
-          typShortint..typUInt64:
-            if NeedExpand(L, R) then
-              DoWarning(bin.Coord, SWarn_CombiningSignedUnsigned);
-        end;
+    if (L.TypeCode = typInt) and (R.TypeCode = typInt) then
+    begin
+      if NeedExpand(TIntType(L), TIntType(R)) then
+        DoWarning(bin.Coord, SWarn_CombiningSignedUnsigned);
     end;
 
     case L.TypeCode of
-      typShortint..typCurrency:
-        if R.TypeCode in [typShortint..typCurrency, typVariant, typOleVariant] then
-          Result := True
+      typInt, typNumeric:
+        if R.TypeCode in [typInt, typNumeric, typVariant] then
+        begin
+          Result := True;
+          if R.TypeCode = typVariant then
+            Include(bin.Attr, eaVarOp);
+        end
         else
           Result := False;
 
-      typAnsiString..typShortString:
-        Result := R.TypeCode in [typAnsiString..typShortString,
-            typAnsiChar, typWideChar, typPAnsiChar, typPWideChar,
-            typVariant, typOleVariant];
+      typString:
+        begin
+          Result := R.TypeCode in [typString, typChar,
+                            typPAnsiChar, typPWideChar, typVariant];
+          if R.TypeCode = typVariant then
+            Include(bin.Attr, eaVarOp)
+          else
+            Include(bin.Attr, eaStrOp);
+        end;
 
-      typBoolean..typLongBool:
-        if R.TypeCode in [typBoolean..typLongBool, typVariant, typOleVariant] then
-          Result := True
+      typBool:
+        if R.TypeCode in [typBool, typVariant] then
+        begin
+          Result := True;
+          if R.TypeCode = typVariant then
+            Include(bin.Attr, eaVarOp);
+        end
         else
           Result := False;
 
-      typVariant, typOleVariant:
-        Result := R.TypeCode in [typShortint..typUInt64,
-                    typComp..typCurrency,
-                    typAnsiChar, typWideChar,
+      typVariant:
+        begin
+          Result := R.TypeCode in [typInt, typNumeric, typChar,
                     typPAnsiChar, typPWideChar,
-                    typBoolean..typLongBool, typEnum,
-                    typAnsiString..typShortString, typVariant..typOleVariant];
+                    typBool, typEnum,
+                    typString, typVariant];
+          Include(bin.Attr, eaVarOp);
+        end;
 
       typPAnsiChar, typPWideChar:
-        Result := R.IsStringCompatible or (R.TypeCode in [typPointer,
-            typAnsiChar, typWideChar,
-            typPAnsiChar, typPWideChar,
-            typVariant, typOleVariant]);
+        if (L.TypeCode = R.TypeCode) or (R.TypeCode = typPointer) then
+          Result := True
+        else if R.IsStringCompatible or (R.TypeCode = typChar) then
+        begin
+          Result := True;
+          Include(bin.Attr, eaStrOp);
+        end
+        else if R.TypeCode = typVariant then
+        begin
+          Result := True;
+          Include(bin.Attr, eaVarOp);
+        end
+        else
+          Result := False;
+      {  Result := (L.TypeCode = R.TypeCode) or R.IsStringCompatible
+            or (R.TypeCode in [typPointer,
+                  typChar,
+                //  typPAnsiChar, typPWideChar,
+                  typVariant]);}
 
-      typAnsiChar, typWideChar:
-        Result := (L.TypeCode = R.TypeCode) or
-            (R.TypeCode in [typAnsiString..typShortString, typAnsiChar, typWideChar, typVariant, typOleVariant]);
+      // AnsiChar can not compare to WideChar
+      typChar:
+        begin
+          Result := ((R.TypeCode = typChar) and (TCharType(R).Kind = TCharType(L).Kind))
+                or (R.TypeCode in [typString, typPAnsiChar, typPWideChar, typVariant]);
+          if Result then
+            if R.TypeCode = typVariant then
+              Include(bin.Attr, eaVarOp)
+            else
+              Include(bin.Attr, eaStrOp);
+        end;
 
       typPointer:
         case R.TypeCode of
-          typInterface, typDispInterface:
+          typInterface, typProcedural:
             Result := bin.Left.OpCode = opNIL;
         else
           // todo 1: 如果两个指针分别指向不同的object或record,则不应该通过
           Result := R.TypeCode in [typPointer, typPAnsiChar, typPWideChar, typClass, typClassRef];
         end;
+
+      typProcedural:
+        if bin.OpCode in [opNE, opEQ] then
+        begin
+          // 检查
+          case R.TypeCode of
+            typProcedural:
+              Result := TProceduralType(L).IsMethodPointer = TProceduralType(R).IsMethodPointer;
+            typPointer:
+              Result := bin.Right.IsNilConst;
+          else
+            Result := False;
+          end;
+        end
+        else
+          Result := False;
 
       typClass:
         if bin.OpCode in [opNE, opEQ] then
@@ -349,56 +454,50 @@ const
           Result := False;
 
       typInterface:
+      // dispinterface 可以和 IDispatch 和同类型的 dispinterface
+      // interface 同一继承树的可以比较
+      // 它们都可以和nil比较
         if bin.OpCode in [opNE, opEQ] then
         begin
           case R.TypeCode of
             typPointer: Result := bin.Right.OpCode = opNIL;
-            typInterface:
-              Result := TInterfaceType(R).IsInheritedFrom(TInterfaceType(L)) or
-                TInterfaceType(L).IsInheritedFrom(TInterfaceType(R));
-            typDispInterface:
-              with FContext do
-                if FIDispatchType <> nil then
-                  Result := TInterfaceType(L).IsInheritedFrom(FIDispatchType)
-                else
-                  Result := True;
           else
-            Result := False;
-          end;
-        end
-        else
-          Result := False;
-
-      // DONE 1: 需要检查继承关系
-      // dispinterface与nil,有继承关系的dispinterface,以及idispatch相容
-      typDispInterface:
-        if bin.OpCode in [opNE, opEQ] then
-        begin
-          case R.TypeCode of
-            typPointer: Result := bin.Right.OpCode = opNIL;
-            typInterface:
-              with FContext do
-                if FIDispatchType <> nil then
-                  Result := TInterfaceType(R).IsInheritedFrom(FIDispatchType)
-                else
-                  Result := True;
-            typDispInterface:
-              Result := TInterfaceType(R).IsInheritedFrom(TInterfaceType(L)) or
-                TInterfaceType(L).IsInheritedFrom(TInterfaceType(R));
-          else
-            Result := False;
+            if TInterfaceType(L).IsDisp then
+            begin
+              Result := (R = FContext.FIDispatchType) or (L = R);
+            end
+            else
+            begin
+              Result := (TInterfaceType(R).IsDisp and (L = FContext.FIDispatchType))
+                  or TInterfaceType(R).IsInheritedFrom(TInterfaceType(L))
+                  or TInterfaceType(L).IsInheritedFrom(TInterfaceType(R));
+            end;
           end;
         end
         else
           Result := False;
 
       typEnum:
-        Result := (L = R) or (R.TypeCode in [typVariant, typOleVariant]);
+        Result := (L = R) or (R.TypeCode = typVariant);
 
-      typSet: Result := (R.TypeCode = typSet) and
-                (bin.OpCode in [opNE, opEQ, opGE, opLE]) and
-                (TSetType(L).RangeType = TSetType(R).RangeType);
-
+      typSet:
+        begin
+          Result := (R.TypeCode = typSet) and
+                  (bin.OpCode in [opNE, opEQ, opGE, opLE]) and
+                  ((TSetType(L).RangeType = nil) or (TSetType(R).RangeType = nil)
+                    or (TSetType(L).RangeType.Equals(TSetType(R).RangeType))
+                  );
+          if Result then
+          begin
+            Include(bin.Attr, eaSetOp);
+            if (TSetType(L).RangeType = nil) and (TSetType(R).RangeType = nil) then
+              bin.Left.Typ := FContext.FByteSetType
+            else if (TSetType(L).RangeType = nil) then
+              bin.Left.Typ := R
+            else
+              bin.Right.Typ := L;
+          end;
+        end;
     else
       Result := False;
     end;
@@ -411,11 +510,16 @@ const
   end;
 
   procedure CheckIsOp(bin: TBinaryExpr);
+  var
+    RT: TType;
   begin
-    bin.Typ := FContext.FTypes[typBoolean];
-    if bin.Left.Typ.TypeCode = typClass then
+    bin.Typ := FContext.FBooleanType;
+    if bin.Left.Typ.TypeCode in [typClass, typInterface] then
     begin
-      if bin.Right.Typ.TypeCode <> typClassRef then
+      RT := bin.Right.Typ;
+      if not (
+          ((RT.TypeCode = typClass) and bin.Right.IsTypeSymbol)
+          or (RT.TypeCode = typClassRef)) then
         ParseError(bin.Coord, SErr_InvalidOperand);
     end
     else
@@ -428,7 +532,7 @@ const
   begin
     // 左: integer, char, enum
     // 右: set
-    bin.Typ := FContext.FTypes[typBoolean];
+    bin.Typ := FContext.FBooleanType;
     NotAllowNode([nkType], bin.Left);
     NotAllowNode([nkType], bin.Right);
 
@@ -437,13 +541,13 @@ const
     else begin
       notEmpty := TSetType(bin.Right.Typ).RangeType <> nil;
       case bin.Left.Typ.TypeCode of
-        typShortint..typUInt64:
+        typInt:
           hasErr := notEmpty and (TSetType(bin.Right.Typ).RangeType <> FContext.FByteRangeType);
 
-        typBoolean..typLongBool:
+        typBool:
           hasErr := notEmpty and (TSetType(bin.Right.Typ).RangeType <> FContext.FBoolRangeType);
 
-        typAnsiChar..typWideChar:
+        typChar:
           hasErr := notEmpty and (TSetType(bin.Right.Typ).RangeType <> FContext.FCharRangeType);
 
         typEnum:
@@ -459,6 +563,7 @@ const
 
     if (eaConst in bin.Left.Attr) and (eaConst in bin.Right.Attr) then
       Include(bin.Attr, eaConst);
+    Include(bin.Attr, eaSetOp);
   end;
 
   procedure CheckAsOp(bin: TBinaryExpr);
@@ -466,11 +571,11 @@ const
     NotAllowNode([nkType], bin.Left);
     // 左边是class, interface型的表达式
     // 右边是类引用表达式, interface型的符号
-    if bin.Left.Typ.TypeCode in [typClass, typInterface, typDispInterface] then
+    if bin.Left.Typ.TypeCode in [typClass, typInterface] then
     begin
       case bin.Right.Typ.TypeCode of
         typClassRef: bin.Typ := TClassRefType(bin.Right.Typ).RefType;
-        typInterface, typDispInterface: begin
+        typInterface: begin
             bin.Typ := bin.Right.Typ;
             if bin.Right.OpCode <> opSYMBOL then
               ParseError(bin.Coord, SErr_InvalidOperand);
@@ -488,16 +593,16 @@ const
   end;
 
 const
-  SignOf: array[typShortint..typUInt64] of Boolean = (
+  SignOf: array[intS8..intU64] of Boolean = (
       True, False, True, False, True, False, True, False
     );
 
-  function NeedExpand(t1, t2: TType): Boolean;
+  function NeedExpand(t1, t2: TIntType): Boolean;
   begin
     // LongWord和其它有符号数的运算, 需要扩展为Int64, 在性能有所损失
-    Result := ((t1.TypeCode = typLongWord) and (t2.TypeCode in [typShortint, typSmallint, typLongint]))
+    Result := ((t1.Kind = intU32) and (t2.Kind in [intS8, intS16, intS32]))
             or
-              ((t2.TypeCode = typLongWord) and (t1.TypeCode in [typShortint, typSmallint, typLongint]));
+              ((t2.Kind = intU32) and (t1.Kind in [intS8, intS16, intS32]));
   end;
 
   procedure CheckDivModOp(bin: TBinaryExpr);
@@ -511,37 +616,38 @@ const
     if L.TypeCode = typSubrange then L := TSubrangeType(L).BaseType;
     if R.TypeCode = typSubrange then R := TSubrangeType(R).BaseType;
 
-    if (L.TypeCode in [typShortint..typUInt64]) and
-       (R.TypeCode in [typShortint..typUInt64]) then
+    if (L.TypeCode = typInt) and (R.TypeCode = typInt) then
     begin
-      if (L.TypeCode in [typLongWord..typUInt64]) or
-         (R.TypeCode in [typLongWord..typUInt64]) then
+      if (TIntType(L).Kind in [intU32..intU64]) or
+         (TIntType(R).Kind in [intU32..intU64]) then
       begin
-        if NeedExpand(L, R) then
+        if NeedExpand(TIntType(L), TIntType(R)) then
           DoWarning(bin.Coord, SWarn_CombiningSignedUnsigned);
 
-        if SignOf[L.TypeCode] or SignOf[R.TypeCode] then
-          bin.Typ := FContext.FTypes[typInt64]
+        if SignOf[TIntType(L).Kind] or SignOf[TIntType(R).Kind] then
+          bin.Typ := FContext.FInt64Type
         else
-          bin.Typ := FContext.FTypes[typUInt64];
+          bin.Typ := FContext.FUInt64Type;
       end
       else
-        bin.Typ := FContext.FTypes[typLongint];
+        bin.Typ := FContext.FLongIntType;
     end
-    else if (L.TypeCode in [typVariant, typOleVariant]) then
+    else if (L.TypeCode = typVariant) then
     begin
       if not TypIsVariantArithCompatible(R) then
         ParseError(bin.Coord, SErr_InvalidOperand);
-      bin.Typ := FContext.FTypes[typVariant];
+      bin.Typ := FContext.FVariantType;
+      Include(bin.Attr, eaVarOp);
     end
-    else if (R.TypeCode in [typVariant, typOleVariant]) then
+    else if (R.TypeCode = typVariant) then
     begin
       if not TypIsVariantArithCompatible(L) then
         ParseError(bin.Coord, SErr_InvalidOperand);
-      bin.Typ := FContext.FTypes[typVariant];
+      bin.Typ := FContext.FVariantType;
+      Include(bin.Attr, eaVarOp);
     end
     else begin
-      bin.Typ := FContext.FTypes[typLongint];
+      bin.Typ := FContext.FLongIntType;
       ParseError(bin.Coord, SErr_InvalidOperand);
     end;
 
@@ -560,22 +666,23 @@ const
     if L.TypeCode = typSubrange then L := TSubrangeType(L).BaseType;
     if R.TypeCode = typSubrange then R := TSubrangeType(R).BaseType;
 
-    if (L.TypeCode in [typShortint..typCurrency]) and
-      (R.TypeCode in [typShortint..typCurrency]) then
+    if (L.TypeCode in [typInt, typNumeric]) and
+      (R.TypeCode in [typInt, typNumeric]) then
     begin
-      bin.Typ := FContext.FTypes[typDouble];
+      bin.Typ := FContext.FDoubleType;
     end
-    else if (L.TypeCode in [typVariant, typOleVariant]) or
-      (R.TypeCode in [typVariant, typOleVariant]) then
+    else if (L.TypeCode = typVariant) or
+      (R.TypeCode = typVariant) then
     begin
       if not TypIsVariantArithCompatible(L) or
           not TypIsVariantArithCompatible(R) then
         ParseError(bin.Coord, SErr_InvalidOperand);
 
-      bin.Typ := FContext.FTypes[typVariant];
+      bin.Typ := FContext.FVariantType;
+      Include(bin.Attr, eaVarOp);
     end
     else begin
-      bin.Typ := FContext.FTypes[typLongint];
+      bin.Typ := FContext.FLongIntType;
       ParseError(bin.Coord, SErr_InvalidOperand);
     end;
     if (eaConst in bin.Left.Attr) and (eaConst in bin.Right.Attr) then
@@ -588,20 +695,26 @@ const
   begin
     NotAllowNode([nkType], un.Operand);
 
-    T := un.Operand.Typ;
-    if T.TypeCode = typSubrange then T := TSubrangeType(T).BaseType;
+    T := un.Operand.Typ.NormalType;
 
     case T.TypeCode of
-      typShortint..typUInt64:
-        un.Typ := FContext.FTypes[T.TypeCode];
+      typInt: un.Typ := T;
 
-      typComp..typCurrency:
-        un.Typ := FContext.FTypes[un.Operand.Typ.TypeCode];
+      typNumeric:
+        case TNumericType(T).Kind of
+          numCurrency: un.Typ := FContext.FCurrencyType;
+          numSingle: un.Typ := FContext.FSingleType;
+        else
+          un.Typ := FContext.FDoubleType;
+        end;
 
-      typVariant..typOleVariant:
-        un.Typ := FContext.FTypes[un.Operand.Typ.TypeCode];
+      typVariant:
+        begin
+          un.Typ := T; // FContext.FVariantType;
+          Include(un.Attr, eaVarOp);
+        end;
     else
-      un.Typ := FContext.FTypes[typLongint];
+      un.Typ := FContext.FLongIntType;
       ParseError(SErr_InvalidOperand);
     end;
 
@@ -611,7 +724,7 @@ const
   // opADD opSUB opMUL
   procedure CheckAddSubMulOp(bin: TBinaryExpr);
   var
-    t1, t2, t: TTypeCode;
+    t1, t2: TTypeCode;
     L, R: TType;
   begin
 {
@@ -619,42 +732,76 @@ const
 }
     NotAllowNode([nkType], bin.Left);
     NotAllowNode([nkType], bin.Right);
-    L := bin.Left.Typ;
-    R := bin.Right.Typ;
-    if L.TypeCode = typSubrange then L := TSubrangeType(L).BaseType;
-    if R.TypeCode = typSubrange then R := TSubrangeType(R).BaseType;
+    L := bin.Left.Typ.NormalType;
+    R := bin.Right.Typ.NormalType;
 
     // todo 1 : 常量必须要更改类型，以避免扩展到64位运算
 
     t1 := L.TypeCode;
     t2 := R.TypeCode;
-    if (t1 in [typShortint..typCurrency]) and
-        (t2 in [typShortint..typCurrency]) then
+    if (t1 in [typInt, typNumeric]) and
+        (t2 in [typInt, typNumeric]) then
     begin
-      t := AddOpResult[L.TypeCode, R.TypeCode];
-      bin.Typ := FContext.FTypes[t];
-      if NeedExpand(L, R) then
-        DoWarning(bin.Coord, SWarn_CombiningSignedUnsigned);
+      if (t1 = typInt) and (t2 = typInt) then
+      begin
+        if (TIntType(L).Kind <= intS32)
+            and (TIntType(R).Kind <= intS32) then
+        begin  // byte,word都可化成longint，所以运算结果都视为longint
+          bin.Typ := FContext.FLongintType;
+        end
+        else if (TIntType(L).Kind = intU64)
+            or (TIntType(R).Kind = intU64) then
+        begin // 与Uint64的运算结果都为UInt64
+          bin.Typ := FContext.FUInt64Type;
+        end
+        else if (TIntType(L).Kind in [intS8, intS16, intS32, intS64])
+            or (TIntType(R).Kind in [intS8, intS16, intS32, intS64]) then
+        begin // shortint,smallint,longint,int64和LongWord运算，结果为int64
+          bin.Typ := FContext.FInt64Type;
+        end
+        else // byte,word,longword和longword运算，结果为longword，不需要化成int64
+          bin.Typ := FContext.FLongWordType;
+
+        // 检查运算时是否需要扩展到64位
+        if NeedExpand(TIntType(L), TIntType(R)) then
+          DoWarning(bin.Coord, SWarn_CombiningSignedUnsigned);
+      end
+      else
+      begin
+        // 和Currency运算，结果为Currency，反之化为Double
+        if ((t1 = typNumeric) and (TNumericType(L).Kind = numCurrency))
+          or ((t2 = typNumeric) and (TNumericType(R).Kind = numCurrency))
+        then
+          bin.Typ := FContext.FCurrencyType
+        else
+          bin.Typ := FContext.FDoubleType;
+      end;
     end
-    else if (t1 in [typVariant..typOleVariant]) or
-        (t2 in [typVariant..typOleVariant]) then
+    else if (t1 = typVariant) or (t2 = typVariant) then
     begin
       if not TypIsVariantArithCompatible(L) or
           not TypIsVariantArithCompatible(R) then
         ParseError(bin.Coord, SErr_InvalidOperand);
 
-      bin.Typ := FContext.FTypes[typVariant];
+      bin.Typ := FContext.FVariantType;
+      Include(bin.Attr, eaVarOp);
     end
     // 字符串
-    else if (bin.OpCode = opADD) and TypIsStringArithCompatible(L)
-        and TypIsStringArithCompatible(R) then
+    else if (bin.OpCode = opADD) and L.IsStringArithCompatible
+        and R.IsStringArithCompatible then
     begin
-      if (t1 = typUnicodeString) or (t2 = typUnicodeString) then
-        bin.Typ := FContext.FTypes[typUnicodeString]
-      else if (t1 = typWideString) or (t2 = typWideString) then
-        bin.Typ := FContext.FTypes[typWideString]
+      if L.IsUnicodeString or R.IsUnicodeString then
+        bin.Typ := FContext.FUnicodeStringType
+      else if L.IsWideString or R.IsWideString then
+        bin.Typ := FContext.FWideStringType
+      // todo 8: 以后做
+      {ShortString相加,需要检查总长,如果超过255,则转为string相加,这个功能
+       留待以后实现,现在不管长度,都转为string
+      else if (t1 = typShortString) or (t2 = typShortString) then
+        bin.Typ := FContext.FTypes[typShortString]}
       else
         bin.Typ := FContext.FStringType;
+      Include(bin.Attr, eaStrOp);
     end
     else if (bin.OpCode = opSUB)
       and (t1 in [typPointer, typPAnsiChar, typPWideChar])
@@ -667,7 +814,7 @@ const
     // p := 1 - p : error
     else if (bin.OpCode in [opADD, opSUB])
       and (t1 in [typPointer, typPAnsiChar, typPWideChar])
-      and (t2 in [typShortint..typInt64]) then
+      and (t2 = typInt) then
     begin
       if (t1 = typPointer) and TPointerType(L).IsUntype then
         ParseError(bin.Coord, SErr_InvalidOperand);
@@ -675,7 +822,7 @@ const
     end
     else if (bin.OpCode in [opADD])
       and (t2 in [typPointer, typPAnsiChar, typPWideChar])
-      and (t1 in [typShortint..typInt64]) then
+      and (t1 = typInt) then
     begin
       if (t2 = typPointer) and TPointerType(R).IsUntype then
         ParseError(bin.Coord, SErr_InvalidOperand);
@@ -684,14 +831,18 @@ const
     // 集合运算
     else if (t1 = typSet) and (t2 = typSet) then
     begin
-      if TSetType(L).RangeType <> TSetType(R).RangeType then
+      if (TSetType(L).RangeType <> nil)
+        and (TSetType(R).RangeType <> nil)
+        and not TSetType(L).RangeType.Equals(TSetType(R).RangeType) then
 //        IncompatibleErr(bin.Coord, t1, t2);
         ParseError(bin.Coord, 'Incompatible types');
+      //bin.Typ := GetSetOpType(L, R);
       bin.Typ := L;
+      Include(bin.Attr, eaSetOp);
     end
     else
     begin
-      bin.Typ := FContext.FTypes[typLongint];
+      bin.Typ := FContext.FLongIntType;
       ParseError(bin.Coord, SErr_InvalidOperand);
     end;
 
@@ -710,31 +861,29 @@ const
     }
     NotAllowNode([nkType], bin.Left);
     NotAllowNode([nkType], bin.Right);
-    L := bin.Left.Typ;
-    R := bin.Right.Typ;
-    if L.TypeCode = typSubrange then L := TSubrangeType(L).BaseType;
-    if R.TypeCode = typSubrange then R := TSubrangeType(R).BaseType;
+    L := bin.Left.Typ.NormalType;
+    R := bin.Right.Typ.NormalType;
 
-    if (L.TypeCode in [typShortint..typUInt64]) and
-        (R.TypeCode in [typShortint..typUInt64]) then
+    if (L.TypeCode = typInt) and
+        (R.TypeCode = typInt) then
     begin
-      if (L.TypeCode < typLongint) and (bin.OpCode = opSHL) then
-        bin.Typ := FContext.FIntegerType
+      if (TIntType(L).Kind < intS32) and (bin.OpCode = opSHL) then
+        bin.Typ := FContext.FLongintType
       else
         bin.Typ := L;
     end
-    else if (L.TypeCode in [typVariant, typOleVariant]) or
-        (R.TypeCode in [typVariant, typOleVariant]) then
+    else if (L.TypeCode = typVariant) or (R.TypeCode = typVariant) then
     begin
       if not TypIsVariantArithCompatible(L) or
           not TypIsVariantArithCompatible(R) then
         ParseError(bin.Coord, SErr_InvalidOperand);
 
-      bin.Typ := FContext.FTypes[typVariant];
+      bin.Typ := FContext.FVariantType;
+      Include(bin.Attr, eaVarOp);
     end
     else
     begin
-      bin.Typ := FContext.FTypes[typLongint];
+      bin.Typ := FContext.FLongintType;
       ParseError(bin.Coord, SErr_InvalidOperand);
     end;
     if (eaConst in bin.Left.Attr) and (eaConst in bin.Right.Attr) then
@@ -752,24 +901,22 @@ const
 }
     NotAllowNode([nkType], bin.Left);
     NotAllowNode([nkType], bin.Right);
-    L := bin.Left.Typ;
-    R := bin.Right.Typ;
-    if L.TypeCode = typSubrange then L := TSubrangeType(L).BaseType;
-    if R.TypeCode = typSubrange then R := TSubrangeType(R).BaseType;
+    L := bin.Left.Typ.NormalType;
+    R := bin.Right.Typ.NormalType;
 
     {
       and or xor 结果的符号推测:
         unsigned op unsigned: unsigned
-        unsigned op signed: -|
-        signed op unsigned: -| unsigned
+        unsigned op signed: \
+                             |=> unsigned
+        signed op unsigned: /
         signed op signed: signed
 
         0..$7fffffff的常量可以更改类型。除此之外，不能。
     }
     t1 := L.TypeCode;
     t2 := R.TypeCode;
-    if (t1 in [typShortint..typUInt64]) and
-        (t2 in [typShortint..typUInt64]) then
+    if (t1 = typInt) and (t2 = typInt) then
     begin
       if L.Size = R.Size then
       begin
@@ -782,35 +929,24 @@ const
         bin.Typ := R
       else
         bin.Typ := L;
-{
-      if (t1 in [typInt64..typUInt64]) or (t2 in [typInt64..typUInt64]) then
-        t := typUInt64
-      else if (t1 in [typShortint, typSmallint, typLongint]) and
-              (t2 in [typShortint, typSmallint, typLongint]) then
-        t := typLongint
-      else
-        t := typLongWord;
-
-      bin.Typ := Parser.FContext.FTypes[t]; }
     end
-    else if (t1 in [typVariant..typOleVariant]) or
-        (t2 in [typVariant..typOleVariant]) then
+    else if (t1 = typVariant) or (t2 = typVariant) then
     begin
       if not TypIsVariantArithCompatible(L) or
           not TypIsVariantArithCompatible(R) then
         ParseError(bin.Coord, SErr_InvalidOperand);
 
-      bin.Typ := FContext.FTypes[typVariant];
+      bin.Typ := FContext.FVariantType;
+      Include(bin.Attr, eaVarOp);
     end
-    else if (bin.OpCode in [opAND, opOR, opXOR]) and
-        (t1 in [typBoolean..typLongBool]) and
-        (t2 in [typBoolean..typLongBool]) then
+    else if (bin.OpCode in [opAND, opOR, opXOR])
+        and (t1 = typBool) and (t2 = typBool) then
     begin
-      bin.Typ := FContext.FTypes[typBoolean];
+      bin.Typ := FContext.FBooleanType;
     end
     else
     begin
-      bin.Typ := FContext.FTypes[typLongint];
+      bin.Typ := FContext.FLongintType;
       ParseError(bin.Coord, SErr_InvalidOperand);
     end;
 
@@ -823,73 +959,52 @@ const
     T: TType;
   begin
     NotAllowNode([nkType], un.Operand);
-    T := un.Operand.Typ;
-    if T.TypeCode = typSubrange then T := TSubrangeType(T).BaseType;
+    T := un.Operand.Typ.NormalType;
 
     case T.TypeCode of
-      typShortint..typUInt64:
-        un.Typ := FContext.FTypes[T.TypeCode];
+      typInt: un.Typ := T;
 
-      typBoolean..typLongBool:
-        un.Typ := FContext.FTypes[T.TypeCode];
+      typBool: un.Typ := T;
 
-      typVariant..typOleVariant:
-        un.Typ := FContext.FTypes[un.Operand.Typ.TypeCode];
+      typVariant:
+        begin
+          un.Typ := T;
+          Include(un.Attr, eaVarOp);
+        end;
     else
-      un.Typ := FContext.FTypes[typBoolean];
+      un.Typ := FContext.FBooleanType;
       ParseError(SErr_InvalidOperand);
     end;
     if eaConst in un.Operand.Attr then Include(un.Attr, eaConst);
   end;
 
-  function CreateCallExpr(Sym: TExpr): TBinaryExpr;
-  var
-    P: TExpr;
-    Left: TExpr;
+  function CreateCallExpr(E: TExpr): TBinaryExpr;
   begin
-    Left := Sym.Parent;
-    //if (Left = nil) or (Left.OpCode = opLIST) then Left := Sym;
+   { Left := Sym.Parent;
     if (Left = nil) or (Left.OpCode <> opMEMBER) then Left := Sym;
+    }
 
-    P := Left.Parent;
-    Result := CreateBinaryExpr(opCALL, Left, nil);
-    Result.Attr := Left.Attr;
-    Result.Coord := Left.Coord;
-    Result.Switches := Left.Switches;
-    Result.Next := Left.Next;
-    Left.Next := nil;
-
-    if P <> nil then
-    begin
-      if P.ClassType = TBinaryExpr then
-      begin
-        if TBinaryExpr(P).Left = Sym then
-          TBinaryExpr(P).Left := Result
-        else
-          TBinaryExpr(P).Right := Result;
-      end
-      else if P.ClassType = TUnaryExpr then
-        if P.OpCode = opLIST then
-          Result.Parent := P
-        else
-          TUnaryExpr(P).Operand := Result;
-    end;
+    Result := CreateBinaryExpr(opCALL, nil, CreateListExpr);
+    Result.Attr := E.Attr;
+    Result.Coord := E.Coord;
+    Result.Switches := E.Switches;
+    // Result.Next := Left.Next;
+    // Left.Next := nil;
+    SubstituteExpr(E, Result);
+    Result.Left := E;
   end;
 
-  function CountOfArgs(Args: TUnaryExpr): Integer;
+  function CreateProcAddrExpr(E: TExpr): TUnaryExpr;
   var
-    E: TExpr;
+    AddrExpr: TUnaryExpr;
   begin
-    Result := 0;
-    if Args = nil then Exit;
-
-    Assert(Args.OpCode = opLIST);
-    E := Args.Operand;
-    while E <> nil do
-    begin
-      E := TExpr(E.Next);
-      Inc(Result);
-    end;
+//    Assert(E.Typ.TypeCode = typProcedural, 'CreateProcAddrExpr: Require E is procedural type');
+    AddrExpr := Self.CreateUnaryExpr(opADDR, nil);
+    AddrExpr.Typ := E.Typ;
+    AddrExpr.Coord := E.Coord;
+    SubstituteExpr(E, AddrExpr);
+    AddrExpr.Operand := E;
+    Result := AddrExpr;
   end;
 
   function GetProcType(Sym: TSymbol): TProceduralType;
@@ -907,7 +1022,7 @@ const
       nkField: Result := GetProc(TField(Sym).FieldType);
       nkProperty: Result := GetProc(TProperty(Sym).PropType);
       nkIntfProperty: Result := GetProc(TIntfProperty(Sym).PropType);
-      nkArgument: Result := GetProc(TArgument(Sym).ArgType);
+      nkFuncParam: Result := GetProc(TFuncParam(Sym).ParamType);
     else
       Result := nil;
     end;
@@ -929,7 +1044,7 @@ const
       nkField: Result := GetRet(TField(Sym).FieldType);
       nkProperty: Result := GetRet(TProperty(Sym).PropType);
       nkIntfProperty: Result := GetRet(TIntfProperty(Sym).PropType);
-      nkArgument: Result := GetRet(TArgument(Sym).ArgType);
+      nkFuncParam: Result := GetRet(TFuncParam(Sym).ParamType);
     else
       Result := nil;
     end;
@@ -939,10 +1054,10 @@ const
   begin
     case Sym.NodeKind of
       nkFunc, nkMethod, nkExternalFunc:
-        Result := TFunctionDecl(Sym).MinOfArgs
+        Result := TFunctionDecl(Sym).MinOfParams
     else
       Sym := GetProcType(Sym);
-      Result := TProceduralType(Sym).MinOfArgs;
+      Result := TProceduralType(Sym).MinOfParams;
     end;
   end;
 type
@@ -951,10 +1066,11 @@ type
                           coCompatible, coMultiCompatible);
 
   // 只有在IsOverload=True之时，才有可能返回caOk
-  function CheckArgs(FormalArgs: TList; CallExpr: TBinaryExpr;
+  function CheckArgs(FormalArgs: TFuncParamList; CallExpr: TBinaryExpr;
                      ErrReport: Boolean = True;
                      IsOverload: Boolean = False; // 位于Overload 中
-                     DoChange: Boolean = True     // 如果实参是Overload 的符号,可以调整它指向的TFunctionDecl
+                     DoChange: Boolean = True;    // 如果实参是Overload 的符号,可以调整它指向的TFunctionDecl
+                     IsVarArgs: Boolean = False   // 是否有varargs声明
                     ): TCheckArgsResult; overload;
 
     procedure ShowError(const Coord: TAstNodeCoord; const Msg: string);
@@ -998,46 +1114,47 @@ type
       ChangeType(ActualArg, FContext.FVarOpenArrayType);
     end;
 
-    procedure CheckArrayOfType(ActualArg: TExpr; ArgDef: TArgument);
+    procedure CheckArrayOfType(ActualArg: TExpr; ArgDef: TFuncParam);
     var
+      List: TListExpr;
       E: TExpr;
+      I: Integer;
     begin
       if ActualArg.OpCode = opSET then
       begin
-        E := TUnaryExpr(ActualArg).Operand;
-        if E <> nil then
-          E := TUnaryExpr(E).Operand;
-        while E <> nil do
+        List := TListExpr(TUnaryExpr(ActualArg).Operand);
+
+        for I := 0 to List.Count - 1 do
         begin
-          if not CheckAssignmentCompatibility(E.Typ, TOpenArrayType(ArgDef.ArgType).ElementType) then
+          E := List.Items[I];
+          if not CheckAssignCompatibility(E.Typ, TOpenArrayType(ArgDef.ParamType).ElementType) then
             ShowError(E.Coord, SErr_IncompatibleTypes);
-          E := TExpr(E.Next);
         end;
         // 更改类型
-        ChangeType(ActualArg, ArgDef.ArgType);
+        ChangeType(ActualArg, ArgDef.ParamType);
       end
       else
       begin
-        if not IsOpenArrayCompatibility(ActualArg.Typ, ArgDef.ArgType) then
+        if not IsOpenArrayCompatibility(ActualArg.Typ, ArgDef.ParamType) then
           ShowError(ActualArg.Coord, SErr_IncompatibleTypes);
-        ChangeType(ActualArg, ArgDef.ArgType);
+        ChangeType(ActualArg, ArgDef.ParamType);
       end;
     end;
 
-    function MinCountOfArgs(Args: TList): Integer;
+    function MinCountOfArgs(Args: TFuncParamList): Integer;
     var
       i: Integer;
     begin
       Result := 0;
       for i := 0 to Args.Count - 1 do
-        if TArgument(Args[i]).DefaultValue.VT = vtEmpty then
+        if Args[i].DefaultValue.VT = vtEmpty then
           Inc(Result);
     end;
 
     function CheckTypeCompatibility(T1, T2: TType): Boolean;
     begin
       if (T1 <> nil) and (T2 <> nil) then
-        Result := CheckAssignmentCompatibility(T1, T2)
+        Result := CheckAssignCompatibility(T1, T2)
       else
         Result := False;
     end;
@@ -1051,14 +1168,14 @@ type
             and T1.IsUntypePointer then
           Result := True
         else
-          Result := CheckAssignmentCompatibility(T1, T2)
+          Result := CheckAssignCompatibility(T1, T2)
       end
       else
         Result := False;
     end;
 
     // 检查形参与实参是否兼容
-    function CheckExprCompatibility(Arg: TArgument; E: TExpr): TCheckArgsResult;
+    function CheckExprCompatibility(Arg: TFuncParam; E: TExpr): TCheckArgsResult;
     var
       Typ: TProceduralType;
       AlterTyp: TType;
@@ -1071,14 +1188,14 @@ type
       if Typ <> nil then
       begin
         AlterTyp := Typ;
-        Ok := CheckTypeCompatibility(Arg.ArgType, AlterTyp);
+        Ok := CheckTypeCompatibility(Arg.ParamType, AlterTyp);
 
-        if not Ok and (Typ.MinOfArgs = 0) then
+        if not Ok and (Typ.MinOfParams = 0) then
         begin
           AlterTyp := Typ.ReturnType;
           if AlterTyp <> nil then
           begin
-            Ok := CheckTypeCompatibility(Arg.ArgType, AlterTyp);
+            Ok := CheckTypeCompatibility(Arg.ParamType, AlterTyp);
             if Ok and DoChange then
               Include(E.Attr, eaCall);
           end;
@@ -1086,7 +1203,7 @@ type
 
         if not Ok then
           Result := caMismatched
-        else if IsOverload and Arg.ArgType.Equals(AlterTyp) then
+        else if IsOverload and Arg.ParamType.Equals(AlterTyp) then
           Result := caOk
         else
           Result := caCompatible;
@@ -1096,7 +1213,7 @@ type
     end;
 
     // 检查形参与实参的类型是否兼容。Ref是E指向的符号
-    function CheckSingleCompatibility(Arg: TArgument; E: TExpr; Ref: TSymbol): TCheckArgsResult;
+    function CheckSingleCompatibility(Arg: TFuncParam; E: TExpr; Ref: TSymbol): TCheckArgsResult;
     var
       AlterTyp: TType;
       Ok: Boolean;
@@ -1105,7 +1222,7 @@ type
       begin
         AlterTyp := GetProcType(Ref);
         if AlterTyp <> nil then
-          Ok := CheckProcCompatibility(Arg.ArgType, AlterTyp)
+          Ok := CheckProcCompatibility(Arg.ParamType, AlterTyp)
         else
           Ok := False;
         if Ok and DoChange then
@@ -1115,7 +1232,7 @@ type
       begin
         //AlterTyp := E.Typ;
         AlterTyp := GetProcType(Ref);
-        Ok := CheckTypeCompatibility(Arg.ArgType, AlterTyp);
+        Ok := CheckTypeCompatibility(Arg.ParamType, AlterTyp);
 
         if not Ok and (MinOfProcArgs(Ref) = 0) then
         begin
@@ -1123,7 +1240,7 @@ type
           AlterTyp := GetReturnType(Ref);
           if AlterTyp <> nil then
           begin
-            Ok := CheckTypeCompatibility(Arg.ArgType, AlterTyp);
+            Ok := CheckTypeCompatibility(Arg.ParamType, AlterTyp);
             if Ok and DoChange then
             begin
               Include(E.Attr, eaCall);
@@ -1135,13 +1252,13 @@ type
 
       if not Ok then
         Result := caMismatched
-      else if IsOverload and Arg.ArgType.Equals(AlterTyp) then
+      else if IsOverload and Arg.ParamType.Equals(AlterTyp) then
         Result := caOk
       else
         Result := caCompatible;
     end;
 
-    function CheckGroupCompatibility(Arg: TArgument; E: TExpr; Func: TFunctionDecl): TCheckOverloadResult;
+    function CheckGroupCompatibility(Arg: TFuncParam; E: TExpr; Func: TFunctionDecl): TCheckOverloadResult;
     var
       ChkResult: TCheckArgsResult;
       F: TFunctionDecl;
@@ -1167,7 +1284,7 @@ type
 
     end;
 
-    function CheckMultiCompatibility(Arg: TArgument; E: TExpr; Func: TFunctionDecl): TCheckArgsResult;
+    function CheckMultiCompatibility(Arg: TFuncParam; E: TExpr; Func: TFunctionDecl): TCheckArgsResult;
     var
       ChkResult: TCheckOverloadResult;
     begin
@@ -1203,7 +1320,12 @@ type
       end
     end;
 
-    function CheckCompatibility(Arg: TArgument; E: TExpr): TCheckArgsResult;
+    function CheckCompatible(T: TType; E: TExpr): Boolean;
+    begin
+      Result := CanAssign(T, E);
+    end;
+
+    function CheckCompatibility(Arg: TFuncParam; E: TExpr): TCheckArgsResult;
     var
       Ref: TSymbol;
     begin
@@ -1236,10 +1358,13 @@ type
         else
           Result := caMismatched;
       end
-      else begin
-        if not CheckTypeCompatibility(Arg.ArgType, E.Typ) then
-          Result := caMismatched
-        else if IsOverload and Arg.ArgType.Equals(E.Typ) then
+      else
+      begin
+        if not CheckCompatible(Arg.ParamType, E) then
+        begin
+          Result := caMismatched;
+        end
+        else if IsOverload and Arg.ParamType.Equals(E.Typ) then
           Result := caOk
         else
           Result := caCompatible;
@@ -1249,8 +1374,8 @@ type
   var
     ArgCount, FormalArgCount, MinArgCount, I: Integer;
     E: TExpr;
-    Arg: TArgument;
-    ActualArgs: TUnaryExpr;
+    Arg: TFuncParam;
+    ActualArgs: TListExpr;
     AllOk: Boolean;
   begin
     FormalArgCount := 0;
@@ -1261,25 +1386,27 @@ type
       MinArgCount := MinCountOfArgs(FormalArgs);
     end;
 
-    ActualArgs := TUnaryExpr(CallExpr.Right);
-    ArgCount := CountOfArgs(ActualArgs);
+    ActualArgs := TListExpr(CallExpr.Right);
+    ArgCount := ActualArgs.Count;
     Result := caMismatched;
     AllOk := True;
+    if IsVarargs and (ArgCount > FormalArgCount) then
+      ArgCount := FormalArgCount;
 
     if (ArgCount <= FormalArgCount) and (ArgCount >= MinArgCount) then
     begin
       if ArgCount > 0 then
       begin
         I := 0;
-        E := ActualArgs.Operand;
-        while E <> nil do
+        while I < ArgCount do
         begin
-          Arg := TArgument(FormalArgs[I]);
+          E := ActualArgs.Items[I];
+          Arg := FormalArgs[I];
 
           if Arg.ArgKind in [akArrayOfType, akArrayOfConst] then
           begin
           // 检查开放数组参数
-            if TOpenArrayType(Arg.ArgType).ElementType.TypeCode = typUntype then
+            if TOpenArrayType(Arg.ParamType).ElementType.TypeCode = typUntype then
               CheckArrayOfConst(E)
             else
               CheckArrayOfType(E, Arg);
@@ -1296,7 +1423,7 @@ type
           begin
             if not E.HasMemory then
               ShowError(E.Coord, SErr_IncompatibleTypes)
-            else if (Arg.ArgType.TypeCode <> typUntype) and (E.Typ <> Arg.ArgType) then
+            else if (Arg.ParamType.TypeCode <> typUntype) and not E.Typ.Equals(Arg.ParamType) then
             // var/out参数必须严格相等
             begin
               ShowError(E.Coord, SErr_VarArgMustIdentical);
@@ -1314,7 +1441,6 @@ type
             end;
           end;
 
-          E := TExpr(E.Next);
           Inc(I);
         end;
       end;
@@ -1345,7 +1471,7 @@ type
     F := Func;
     while F <> nil do
     begin
-      ChkResult := CheckArgs(F.Args, CallExpr, False, True, False);
+      ChkResult := CheckArgs(F.Params, CallExpr, False, True, False, fmVarargs in Func.Modifiers);
       if ChkResult = caOk then
       begin
         Inc(MatchedCount);
@@ -1379,17 +1505,20 @@ type
 
   procedure ProcessDelayed(CallExpr: TBinaryExpr);
   var
-    Args: TUnaryExpr;
+    Args: TListExpr;
     E: TExpr;
+    I: Integer;
     NewExpr: TBinaryExpr;
     Ref: TSymbol;
   begin
     if CallExpr = nil then Exit;
-    Args := TUnaryExpr(CallExpr.Right);
+    Args := TListExpr(CallExpr.Right);
     if Args = nil then Exit;
-    E := Args.Operand;
-    while E <> nil do
+
+    for I := 0 to Args.Count - 1 do
     begin
+      E := Args.Items[I];
+
       if eaCall in E.Attr then
       begin
         Exclude(E.Attr, eaDelayed);
@@ -1399,10 +1528,20 @@ type
         if Ref <> nil then
           NewExpr.Typ := GetReturnType(Ref);
         if NewExpr.Typ = nil then NewExpr.Typ := FContext.FUntype;
+      end
+      else if eaDelayed in E.Attr then
+      begin
+        Exclude(E.Attr, eaDelayed);
+        if E.GetFunctionSymbol <> nil then
+        begin
+          // 至此应该是取函数指针了，补一个@
+          Assert(E.OpCode <> opADDR);
+          CreateProcAddrExpr(E);
+        end;
       end;
-      E := TExpr(E.Next);
     end;
   end;
+
   procedure CheckArgs(var Func: TFunctionDecl; CallExpr: TBinaryExpr); overload;
   var
     ChkResult: TCheckOverloadResult;
@@ -1410,6 +1549,7 @@ type
   begin
     if fmOverload in Func.Modifiers then
     begin
+    // 有overflow指令，可以跨范围查找
       GetOverloadBegin(Func);
       Old := Func;
       FirstOk := nil;
@@ -1438,7 +1578,7 @@ type
       if FirstOk <> nil then
       begin
         Func := FirstOk;
-        CheckArgs(Func.Args, CallExpr, True, True, True);
+        CheckArgs(Func.Params, CallExpr, True, True, True);
         ProcessDelayed(CallExpr);
         Exit;
       end;
@@ -1454,7 +1594,7 @@ type
       ChkResult := CheckFuncs(Func, CallExpr);
       case ChkResult of
         coCompatible, coMatched: begin
-          CheckArgs(Func.Args, CallExpr, True, True, True);
+          CheckArgs(Func.Params, CallExpr, True, True, True);
           ProcessDelayed(CallExpr);
           Exit;
         end;
@@ -1470,7 +1610,7 @@ type
     end
     else
     begin
-      CheckArgs(Func.Args, CallExpr, True, False, True);
+      CheckArgs(Func.Params, CallExpr, True, False, True, fmVarargs in Func.Modifiers);
       ProcessDelayed(CallExpr);
     end;
   end;
@@ -1498,20 +1638,18 @@ type
     end;
   end;    }
 
-//  function FindMatch
-  procedure CheckBuiltinArgs(Kind: TBuiltinFunctionKind;
-                             CallExpr: TBinaryExpr; var Typ: TType);
+  function CheckBuiltinArgs(Kind: TBuiltinFunctionKind;
+                             CallExpr: TBinaryExpr; var Typ: TType): TExpr;
   var
     Num: Integer;
-    E: TExpr;
     A1, A2, A3: TExpr;
-    ActualArgs: TUnaryExpr;
+    ActualArgs: TListExpr;
 
     procedure CheckAbs;
     begin
       if Num = 1 then begin
         NotAllowNode([nkType], A1);
-        if not (A1.Typ.TypeCode in [typShortint..typUInt64, typComp..typCurrency]) then
+        if not (A1.Typ.TypeCode in [typInt, typNumeric]) then
           ParseError(A1.Coord, SErr_IncompatibleTypes);
       end else
         ParseError(CallExpr.Coord, SErr_ArgNotMatched2, ['abs']);
@@ -1541,12 +1679,13 @@ type
 
     procedure CheckAddr;
     begin
+      // Addr 取的地址是无类型的，不管$T的状态
       if Num = 1 then begin
         if not (A1.HasMemory or A1.IsFunction) then
           ParseError(A1.Coord, SErr_IncompatibleTypes);
       end else
         ParseError(CallExpr.Coord, SErr_ArgNotMatched2, ['addr']);
-      Typ := FContext.FTypes[typPointer];
+      Typ := FContext.FPointerType;
     end;
 
     procedure CheckAssigned;
@@ -1558,7 +1697,7 @@ type
           ParseError(A1.Coord, SErr_IncompatibleTypes);
       end else
         ParseError(CallExpr.Coord, SErr_ArgNotMatched2, ['assigned']);
-      Typ := FContext.FTypes[typBoolean];
+      Typ := FContext.FBooleanType;
     end;
 
     // Break/Continue
@@ -1624,7 +1763,7 @@ type
       if Num = 1 then begin
         V := A1.GetVariableSymbol;
         if (FCurFunction.ReturnType = nil) or
-          not CheckAssignmentCompatibility(
+          not CheckAssignCompatibility(
             FCurFunction.ReturnType,
             A1.Typ) or ((V <> nil) and (vaResult in V.VarAttr)) then
         ParseError(A2.Coord, SErr_IncompatibleTypes);
@@ -1707,18 +1846,18 @@ type
     begin
       if Num = 1 then begin
         NotAllowNode([nkType], A1);
-        if not (A1.Typ.TypeCode in [typShortint..typUInt64]) then
+        if not (A1.Typ.TypeCode = typInt) then
           ParseError(A1.Coord, SErr_IncompatibleTypes);
       end else
         ParseError(CallExpr.Coord, SErr_ArgNotMatched);
-      Typ := FContext.FTypes[typByte];
+      Typ := FContext.FByteType;
     end;
 
     procedure CheckHigh;
     begin
     // high参数可以是类型名称如Shortint
       if Num = 1 then begin
-        if not ((A1.Typ.TypeCode in [typArray, typDynamicArray, typShortString])
+        if not ((A1.Typ.TypeCode in [typArray, typDynamicArray, typString])
                 or A1.Typ.IsOrdinal) then
           ParseError(A1.Coord, SErr_IncompatibleTypes);
       end else
@@ -1734,7 +1873,7 @@ type
     begin
       if Num = 1 then begin
         NotAllowNode([nkType], A1);
-        if not (A1.Typ.TypeCode in [typArray, typDynamicArray, typAnsiString..typShortString]) then
+        if not (A1.Typ.TypeCode in [typArray, typDynamicArray, typString]) then
           ParseError(A1.Coord, SErr_IncompatibleTypes);
       end else
         ParseError(CallExpr.Coord, SErr_ArgNotMatched);
@@ -1766,7 +1905,7 @@ type
           ParseError(A1.Coord, SErr_IncompatibleTypes);
       end else
         ParseError(CallExpr.Coord, SErr_ArgNotMatched);
-      Typ := FContext.FTypes[typBoolean];
+      Typ := FContext.FBooleanType;
     end;
 
     function GetUnderlineType(T: TType): TType;
@@ -1777,22 +1916,26 @@ type
                         TEnumType(A1.Typ).LowValue,
                         TEnumType(A1.Typ).HighValue
                       );
-        typShortint..typUInt64:
+        typInt:
           Result := T;
-        typBoolean, typByteBool:
-          Result := FContext.FTypes[typByte];
-        typWordBool:
-          Result := FContext.FTypes[typWord];
-        typLongBool:
-          Result := FContext.FTypes[typLongWord];
-        typAnsiChar:
-          Result := FContext.FTypes[typByte];
-        typWideChar:
-          Result := FContext.FTypes[typWord];
+        typBool:
+          case TBoolType(A1.Typ).Kind of
+            bolStd, bolByte: Result := FContext.FByteType;
+            bolWord: Result := FContext.FWordType;
+          else
+            Result := FContext.FLongWordType;
+          end;
+
+        typChar:
+          if TCharType(A1.Typ).Kind = charAnsi then
+            Result := FContext.FByteType
+          else
+            Result := FContext.FWordType;
+
         typSubrange:
           Result := GetUnderlineType(TSubrangeType(T).BaseType);
       else
-        Result := FContext.FIntegerType;
+        Result := FContext.FLongIntType;
       end;
     end;
 
@@ -1827,18 +1970,18 @@ type
           ParseError(A1.Coord, SErr_IncompatibleTypes);
       end else
         ParseError(CallExpr.Coord, SErr_ArgNotMatched);
-      Typ := FContext.FTypes[typPointer];
+      Typ := FContext.FPointerType;
     end;
 
     procedure CheckRound;
     begin
       if Num = 1 then begin
         NotAllowNode([nkType], A1);
-        if not (A1.Typ.TypeCode in [typShortint..typUInt64, typComp..typCurrency]) then
+        if not (A1.Typ.TypeCode in [typInt, typNumeric]) then
           ParseError(A1.Coord, SErr_IncompatibleTypes);
       end else
         ParseError(CallExpr.Coord, SErr_ArgNotMatched);
-      Typ := FContext.FTypes[typInt64];
+      Typ := FContext.FInt64Type;
     end;
 
     procedure CheckSetLength;
@@ -1847,7 +1990,7 @@ type
       begin
         // A1必须是变量
         if not ((A1.HasMemory) and
-                (A1.Typ.TypeCode in [typAnsiString..typShortString, typDynamicArray])) then
+                (A1.Typ.TypeCode in [typString, typDynamicArray])) then
           ParseError(A1.Coord, SErr_IncompatibleTypes);
         // 如果是DynamicArray，必须检查维数
       end
@@ -1877,7 +2020,7 @@ type
           ParseError(A1.Coord, SErr_IncompatibleTypes);
       end else
         ParseError(CallExpr.Coord, SErr_ArgNotMatched);
-      Typ := FContext.FTypes[typWord];
+      Typ := FContext.FWordType;
     end;
 
     procedure CheckTypeInfo;
@@ -1887,45 +2030,23 @@ type
           ParseError(A1.Coord, SErr_IncompatibleTypes);
       end else
         ParseError(CallExpr.Coord, SErr_ArgNotMatched);
-      Typ := FContext.FTypes[typPointer];
+      Typ := FContext.FPointerType;
     end;
 
-    function createConst(Value: Integer): TConstExpr;
+{    function createConst(Value: Integer): TConstExpr;
     begin
-      Result := CreateConstExpr(opINTCONST);
+      Result := CreateConstExpr(opCONST);
       Result.Value := ValFromInt(Value);
-    end;
+    end;}
   begin
-    ActualArgs := TUnaryExpr(CallExpr.Right);
-    if ActualArgs <> nil then
-    begin
-      Assert(ActualArgs.OpCode = opLIST);
-      Num := 0; A1 := nil; A2 := nil; A3 := nil;
-      E := ActualArgs.Operand;
-      while E <> nil do
-      begin
-        case Num of
-          0: A1 := E;
-          1: A2 := E;
-          2: A3 := E;
-          else Break;
-        end;
-        Inc(Num);
-        E := TExpr(E.Next);
-      end;
+    ActualArgs := TListExpr(CallExpr.Right);
+    Assert(ActualArgs.OpCode = opLIST);
 
- {     // 补充缺省参数
-      case Kind of
-        bfInc, bfDec, bfInitialize, bfFinalize:
-          if Num = 1 then
-          begin
-            A2 := createConst(1);
-            A1.Next := A2;
-          end;
-      end;}
-    end
-    else
-      Num := 0;
+    Num := ActualArgs.Count;
+    A1 := nil; A2 := nil; A3 := nil;
+    if Num > 0 then A1 := ActualArgs.Items[0];
+    if Num > 1 then A2 := ActualArgs.Items[1];
+    if Num > 2 then A3 := ActualArgs.Items[2];
 
     case Kind of
       bfAbs:          CheckAbs;
@@ -1961,35 +2082,53 @@ type
     else
       ParseError(CallExpr.Coord, 'Invalid builtin routine', True); // 不会到此
     end;
+
     if (Typ = FContext.FAnytype) and (CallExpr.Parent = nil) then
       Typ := FContext.FUntype;
 
+    Result := CallExpr;
+
     // todo 999: 如果增加了内置函数，则需要检查这里
-    if Kind in [bfChr, bfHi, bfHigh, bfLength, bfLo, bfLow, bfOdd,
+    // todo 1: 需要把Addr也包括在内
+    if Kind in [bfAbs, bfChr, bfHi, bfHigh, bfLo, bfLow, bfOdd,
                 bfOrd, bfPred, bfRound, bfSucc, bfSwap, bfTrunc] then
     begin
-      if (A1 <> nil) and (eaConst in A1.Attr) then
+      if (A1 <> nil) and ((eaConst in A1.Attr) or A1.IsTypeSymbol) then
         Include(CallExpr.Attr, eaConst);
     end
-    else if Kind = bfSizeOf then
+    else if Kind in [bfSizeOf, bfLength] then
       Include(CallExpr.Attr, eaConst);
+
+    if (eaConst in CallExpr.Attr)
+      or ((Kind = bfAddr) and (psInConstExpr in Self.FCurStates)
+            and not (psNotAllowAddr in Self.FCurStates)) then
+    begin
+      Result := ConstantFold(CallExpr);
+    end;
   end;
 
   function ValueCastOk(typ: TType): Boolean;
   begin
     Result := typ.IsOrdinal or (typ.TypeCode in [typPointer, typPAnsiChar,
                 typPWideChar, typProcedural, typClass, typClassRef,
-                typInterface, typDispInterface]);
+                typInterface]);
   end;
+
+{  function VarCastOk(t1, t2: TType): Boolean;
+  begin
+    // 检查是否可以varcast
+    // int=>ptr,ptr=>int 仅管大小相同，但不视为VarCast
+    // self=>ptr 由于Self仅管为值
+  end;}
 
   function CheckValueCast(L, R: TType): Boolean;
   begin
-    if L.TypeCode in [typVariant, typOleVariant] then
-      Result := R.IsOrdinal or R.IsReal or (R.TypeCode in [typInterface, typDispInterface])
-    else if R.TypeCode in [typVariant, typOleVariant] then
-      Result := L.IsOrdinal or L.IsReal or (L.TypeCode in [typInterface, typDispInterface])
-    else if L.IsReal then
-      Result := R.IsOrdinal or R.IsReal
+    if L.TypeCode = typVariant then
+      Result := R.IsOrdinal or R.IsReal or (R.TypeCode in [typInterface])
+    else if R.TypeCode = typVariant then
+      Result := L.IsOrdinal or L.IsReal or (L.TypeCode in [typInterface])
+    else if L.IsReal then   // Int<=Real,Real<=Int, not allowed
+      Result := {R.IsOrdinal or} R.IsReal
     else
       Result := ValueCastOk(L) and ValueCastOk(R);
   end;
@@ -2002,11 +2141,11 @@ type
     E: TExpr;
     HasMem, Ok: Boolean;
   begin
-    Result := nil;
+    Result := bin;
     L := bin.Left.Typ.NormalType;
     E := bin.Right;
     bin.Typ := L;
-    if CountOfArgs(TUnaryExpr(E)) <> 1 then
+    if E = nil then
     begin
       ParseError(bin.Coord, SErr_InvalidCast);
       Exit;
@@ -2014,32 +2153,39 @@ type
 
     EnsureNode(nkType, bin.Left);
     NotAllowNode([nkType], bin.Right);
-    R := TUnaryExpr(E).Operand.Typ.NormalType;
+    R := E.Typ.NormalType;
 
-    HasMem := TUnaryExpr(E).Operand.HasMemory;
+    HasMem := E.HasMemory;
 
   // see http://docwiki.embarcadero.com/RADStudio/en/Expressions_(Delphi)#Typecasts
 
     // todo 5: cast需要再深入研究一下
+    // todo 5: variable对属性，函数返回值也有效 TRec(obj.Prop)
     {
     ordinal type => ordinal type, pointer, variant, (set, array or record with memory of equal size)
     pointer type => ordinal type, pointer, string, class, classref, interface
     variant => ordinal, real, interface
      (set, array or record) => ordinal type , pointer with memory of equal size
     }
-    { value cast    : 必须都是指针或有序类型
-      variable cast : 被转换的必须有内存，并且是无类型或者与目的类型尺寸相等
+    {
+      variable cast : 其实质是对一块内存进行转型，必须是无类型或者与目的类型尺寸相等
+                      并且排除 Int<=>Real
+      value cast    : 如果不能视为variable cast，那么就是value cast
     }
-    if HasMem then
+
+    if HasMem and not (psInConstExpr in Self.FCurStates) then
     begin
-      Ok := not (L.IsInteger and R.IsReal);
+      Ok := not (L.IsInteger and R.IsReal) and not (L.IsReal and R.IsInteger);
       if Ok then
       begin
         Ok := (L.Size = R.Size) or (R.TypeCode = typUntype);
         if not Ok then
           Ok := CheckValueCast(L, R)
-        else
+        else // 2016.3.26 对于尺寸相同的Int<=>Ptr，也视为varcast
           Include(bin.Attr, eaVarCast);
+       { else if not (L.IsInteger and R.IsPointerBased) and
+              not (R.IsInteger and L.IsPointerBased) then // Ptr => Int 或 Int=>Ptr不视为varcast
+          Include(bin.Attr, eaVarCast);}
       end;
     end
     else
@@ -2049,42 +2195,23 @@ type
       if Ok then
         Ok := CheckValueCast(L, R);}
     end;
-(*
-    // 如果右边是无类型,则转换总是成功的
-    if R = Parser.FContext.FUntype then
+
+    if Ok then
     begin
-      if bin.Typ.TypeCode = typProcedural then
-        Result := CheckAdjustCall(bin);
-      Exit;
+      if eaConst in E.Attr then
+      begin
+        Include(bin.Attr, eaConst);
+        Result := ConstantFold(bin);
+//        bin := nil;
+      end;
     end;
 
-    if L.IsOrdinal then
-    begin
-      Ok := not (R.TypeCode in [typComp..typCurrency]);
-      if Ok and (R.TypeCode in [typRecord, typSet, typArray]) then
-        Ok := R.Size = L.Size;
-      // todo 2: 此处有问题，比如
-      // var f: textfile;  integer(f);
-      // 另外, i := byte(['a']);
-    end
-    else
-    begin
-      if L.TypeCode in [typRecord, typSet] then
-        Ok := L.Size = R.Size
-      else if L.TypeCode in [typVariant, typOleVariant] then
-        Ok := R.IsOrdinal or R.IsReal or (R.TypeCode in [typInterface, typDispInterface])
-      else if R.TypeCode in [typVariant, typOleVariant] then
-        Ok := L.IsOrdinal or L.IsReal or (L.TypeCode in [typInterface, typDispInterface])
-      else
-        Ok := ValueCastOk(L) and ValueCastOk(R);
-    end;  *)
-
     if not Ok then
-      ParseError(bin.Coord, SErr_InvalidCast)
+      ParseError(Result.Coord, SErr_InvalidCast)
     else begin
       // 最终结果如果是函数,应该检查是否进行函数调用
-      if bin.Typ.TypeCode = typProcedural then
-        Result := CheckAdjustCall(bin);
+      if Result.Typ.TypeCode = typProcedural then
+        Result := CheckAdjustCall(Result);
     end;
   end;
 
@@ -2099,10 +2226,14 @@ type
     1. 符号
     2. 返回函数指针的表达式
   }
-    Result := nil;
+    Result := bin;
     L := bin.Left;
     if L.OpCode = opMEMBER then
     begin
+      {while TBinaryExpr(L).Right.OpCode = opMEMBER do
+      begin
+        L := TBinaryExpr(L).Right;
+      end;}
       ASSERT(TBinaryExpr(L).Right.OpCode = opSYMBOL, 'CheckCall');
       Ref := @TSymbolExpr(TBinaryExpr(L).Right).Reference;
     end
@@ -2134,8 +2265,9 @@ type
 
         nkBuiltinFunc: begin
           Typ := nil;
-          CheckBuiltinArgs(TBuiltinFunction(Ref^).Kind, bin, Typ);
-          bin.Typ := Typ;
+          Result := CheckBuiltinArgs(TBuiltinFunction(Ref^).Kind, bin, Typ);
+          if Result = bin then
+            bin.Typ := Typ;
           TSymbolExpr(L).Typ := Typ;
         end;
       else
@@ -2145,7 +2277,7 @@ type
     else if (L.Typ.IsProcedural) then
     begin  // variable of procedural?
       NotAllowNode([nkType], L);
-      CheckArgs(TProceduralType(L.Typ).Args, bin);
+      CheckArgs(TProceduralType(L.Typ).Params, bin);
       bin.Typ := TProceduralType(L.Typ).ReturnType;
       if bin.Typ = nil then
       begin
@@ -2162,6 +2294,10 @@ type
   // 检查是否有个@运算置于表达式之前
   function AddrOpPrefix(E: TExpr): Boolean;
   begin
+    // 2015/12/12
+    Result := (E.Parent <> nil) and (E.Parent.OpCode = opADDR);
+    {
+    // todo 1:此处不妥.如@obj[proc1].show, 判断proc1则失效
     Result := True;
     E := E.Parent;
     while E <> nil do
@@ -2169,92 +2305,129 @@ type
       if E.OpCode = opADDR then Exit;
       E := E.Parent;
     end;
-    Result := False;
+    Result := False;}
   end;
 
-  function IsCallNeed(E: TExpr; Ref: TSymbol; FuncT: TProceduralType): Boolean;
+type
+  TCallNeedCheckResult = (
+    cncrNeed, cncrDelayed, cncrIsCall, cncrIsAddr, cncrOther
+  );
+
+  // 检查表达式 E 是否需要扩展为调用，返回 cncrNeed 为需要
+  // E 为 TSymbolExpr 或 opMember 或类型为 TProceduralType 的 TExpr
+  // Ref 为 E 所指向的符号，可为 nil
+  // FunT 为 E 的类型，可为nil
+  function CallNeedCheck(E: TExpr; Ref: TSymbol;
+                         FunT: TProceduralType): TCallNeedCheckResult;
   var
     T: TType;
+    isFun: Boolean;
   begin
     if psInAccessor in FCurStates then
     begin
-      Result := False;
+      Result := cncrOther;
       Exit;
     end;
 
-    if (E.Parent <> nil) and (E.Parent.OpCode = opMEMBER) then
-      E := E.Parent;
+    if synProcvarFpc in FSyntaxOptions then
+    begin
+      // fpc风格的语法，不需要根据符号所在位置来动态判断。
+      // 函数:调用。
+      // 函数变量:变量。
+      // 取函数指针：加@
+      isFun := (Ref <> nil) and (Ref.NodeKind in [nkFunc, nkMethod, nkExternalFunc]);
+      if isFun then
+      begin
+        if Assigned(E.Parent) then
+        begin
+          case E.Parent.OpCode of
+            opADDR: Result := cncrIsAddr;
+            opCALL, opINHERITED: Result := cncrIsCall;
+            // todo 1: opINHERITED?
+          else
+            Result := cncrNeed;
+          end;
+        end
+        else
+          Result := cncrNeed;
+      end
+      else
+        Result := cncrOther;
+      Exit;
+    end;
 
     if E.Parent = nil then
     begin
       if psInLeftVal in FCurStates then
       begin
         if (Ref <> nil) and (Ref.NodeKind in [nkFunc, nkMethod, nkExternalFunc]) then
-          Result := True   // 函数不能被赋值
+          Result := cncrNeed   // 函数不能被赋值
         else
-          Result := False  // 这时无法决定是否是函数调用。要等进一步分析
+          Result := cncrOther  // 这时无法决定是否是函数调用。要等进一步分析
       end
       else if FExpectedProcType then
-        Result := False
+        Result := cncrOther
       else
-        Result := True;
+        Result := cncrNeed;
     end
-    else if E.Parent.OpCode = opCALL then
-      Result := False      // 已经是Call
+    else if E.Parent.OpCode in [opCALL, opINHERITED] then
+      Result := cncrIsCall      // 已经是Call
     else if AddrOpPrefix(E) then
-      Result := False      // 取地址
-    else
-    begin
+      Result := cncrIsAddr      // 取地址
+    else begin
       if (Ref <> nil) and (Ref.NodeKind in [nkFunc, nkMethod, nkExternalFunc]) then
         T := TFunctionDecl(Ref).ReturnType
-      else if FuncT <> nil then
-        T := FuncT.ReturnType
+      else if FunT <> nil then
+        T := FunT.ReturnType
       else
         T := nil;
 
       // 1.有返回值 2.父级是参数列表
       if (T <> nil) and (eaArgList in E.Parent.Attr) then
       begin
-        Include(E.Attr, eaDelayed); // 到父级再决定是否调用
-        Result := False;
+        Result := cncrDelayed;
       end
+      else if (Ref.NodeKind in [nkVariable, nkFuncParam, nkField])
+          and (E.Parent.OpCode = opCAST) then
+        Result := cncrOther
+      else if T <> nil then
+        Result := cncrNeed
       else
-        Result := T <> nil;//False;
+        Result := cncrOther;
+    end;
+  end;
+
+  // 判断表达式 E 是否需要扩展为调用。返回true表示需要
+  // 如果需要延迟判断，则标记 E 的Attr为 eaDelayed
+  // E 为 TSymbolExpr 或类型为 TProceduralType 的 TExpr
+  // Ref 为 E 所指向的符号，可为 nil
+  // FunT 为 E 的类型，可为nil
+  function IsCallNeed(E: TExpr; Ref: TSymbol; FunT: TProceduralType): Boolean;
+  begin
+    case CallNeedCheck(E, Ref, FunT) of
+      cncrDelayed:
+        begin
+          Include(E.Attr, eaDelayed); // 到父级再决定是否调用
+          Result := False;
+        end;
+      cncrNeed:
+        Result := True;
+    else
+      Result := False;
     end;
   end;
 
   // 检查并创建opCALL表达式
-  // 参数E 是返回procedural type的表达式
+  // 参数E 是返回 TProceduralType 的表达式，非函数符号
   function CheckAdjustCall(E: TExpr): TExpr;
   begin
     Result := nil;
     if E.Typ.TypeCode <> typProcedural then Exit;
-
+  //  Assert(E.Typ.TypeCode = typProcedural, 'CheckAdjustCall');
     if IsCallNeed(E, nil, TProceduralType(E.Typ)) then
     begin
       Result := CreateCallExpr(E);
       CheckCall(TBinaryExpr(Result));
-    end;
-  end;
-
-  procedure InsertExpr(P, Child, OldChild: TExpr);
-  begin
-    if P <> nil then
-    begin
-      if P.ClassType = TBinaryExpr then
-      begin
-        if TBinaryExpr(P).Left = OldChild then
-          TBinaryExpr(P).Left := Child
-        else
-          TBinaryExpr(P).Right := Child;
-      end
-      else if P.ClassType = TUnaryExpr then
-      begin
-        if P.OpCode = opLIST then
-          Child.Parent := P
-        else
-          TUnaryExpr(P).Operand := Child;
-      end;
     end;
   end;
 
@@ -2281,12 +2454,50 @@ type
       ParseError(SErr_SymbolNotAccess, [Sym.Name]);
   end;
 
+  { 检查成员是否可以访问
+  }
+  function CanMemberAccess(Ref: TSymbol): Boolean;
+  var
+    P1, P2: TType;
+  begin
+    // 如果 Ref 是个字段、属性、方法，需要检查是否为当前方法所在类的成员之。
+    if Assigned(FTopFunction)
+      and (Ref.NodeKind in [nkMethod, nkField, nkProperty, nkIntfProperty])
+      and not (saStatic in Ref.Attr)
+      and not (saClass in Ref.Attr) then
+    begin
+      if (FTopFunction.NodeKind <> nkMethod)
+        or (FTopFunction.Parent = nil)
+        or (Ref.Parent = nil)
+        or (FTopFunction.Parent.NodeKind <> nkType)
+        or (Ref.Parent.NodeKind <> nkType) then
+      begin
+        Result := False;
+        Exit;
+      end;
+      P1 := TType(FTopFunction.Parent);
+      P2 := TType(Ref.Parent);
+      Result := P1 = P2;
+      if not Result and (P1.TypeCode = P2.TypeCode) then
+      begin
+        case P1.TypeCode of
+          typClass: Result := TClassType(P1).IsInheritedFrom(TClassType(P2));
+          typObject: Result := TObjectType(P1).IsInheritedFrom(TObjectType(P2));
+        else
+          Result := False;
+        end;
+      end;
+    end
+    else
+      Result := True;
+  end;
+
   // 检查符号, 如果这个符号是个函数, 可能会创建一个opCALl的表达式
   function CheckSymbol(sym: TSymbolExpr): TExpr;
   var
     Ref: TSymbol;
   begin
-    Result := nil;
+    Result := sym;
     if sym.Reference <> nil then
       Ref := sym.Reference
     else
@@ -2309,10 +2520,10 @@ type
         nkType:
           sym.Typ := TType(Ref);
         // Var,const, arg, field, 如果类型是procedure,则需要检查是函数调用还是当成变量
-        nkVariable, nkArgument, nkConstant, nkField, nkProperty, nkIntfProperty: begin
+        nkVariable, nkFuncParam, nkConstant, nkField, nkProperty, nkIntfProperty: begin
           case Ref.NodeKind of
             nkVariable:     Sym.Typ := TVariable(Ref).VarType;
-            nkArgument:     Sym.Typ := TArgument(Ref).ArgType;
+            nkFuncParam:    Sym.Typ := TFuncParam(Ref).ParamType;
             nkConstant:     Sym.Typ := TConstant(Ref).ConstType;
             nkField:        Sym.Typ := TField(Ref).FieldType;
             nkProperty:     Sym.Typ := TProperty(Ref).PropType;
@@ -2320,6 +2531,10 @@ type
           end;
 
           if Sym.Typ = nil then Sym.Typ := FContext.FUntype;
+          if Ref.NodeKind = nkConstant then Include(Sym.Attr, eaConst);
+
+          if not CanMemberAccess(Ref) then
+            ParseError('Can not access Outter''s non-static member: %s', [Sym.Name]);
 
           if FCurFunction <> nil then
           begin
@@ -2332,11 +2547,11 @@ type
                   Include(TVariable(Ref).States, vsNestRef);
                   Include(FCurFunction.FuncAttr, faNeedFPArg);
                 end;
-              nkArgument:
-                if (FCurFunction.Level > TArgument(Ref).Level)
-                    {and (TArgument(Ref).Level > 0)} then
+              nkFuncParam:
+                if (FCurFunction.Level > TFuncParam(Ref).Level)
+                    {and (TFuncParam(Ref).Level > 0)} then
                 begin
-                  Include(TArgument(Ref).States, asNestRef);
+                  Include(TFuncParam(Ref).States, asNestRef);
                   Include(FCurFunction.FuncAttr, faNeedFPArg);
                 end;
             end;
@@ -2350,24 +2565,41 @@ type
             end;
         end;
 
-        nkEnumElement: sym.Typ := TEnumValue(Ref).EnumType;
+        nkEnumElement:
+          begin
+            sym.Typ := TEnumValue(Ref).EnumType;
+            Include(Sym.Attr, eaConst);
+          end;
 
         nkExternalFunc, nkFunc, nkMethod: begin
+          if not CanMemberAccess(Ref) then
+            ParseError('Can not access Outter''s non-static member: %s', [Sym.Name]);
           Sym.Typ := FContext.FUntype;
-          if IsCallNeed(Sym, Ref, nil) then
-          begin
-            Result := CreateCallExpr(Sym);
-            CheckCall(TBinaryExpr(Result));
+          case CallNeedCheck(Sym, Ref, nil) of
+            cncrNeed: begin
+              Result := CreateCallExpr(Sym);
+              CheckCall(TBinaryExpr(Result));
 
-            if (FCurFunction <> nil) and (Ref.NodeKind = nkFunc)
-              and (TFunction(Ref).Level > 0)
-              and (TFunction(Ref).Level <= FCurFunction.Level) then
-            begin
-              Include(FCurFunction.FuncAttr, faNeedFPArg);
+              // Ref 是嵌套函数，嵌套级数不大于当前函数
+              if (FCurFunction <> nil) and (Ref.NodeKind = nkFunc)
+                and (TFunction(Ref).Level > 0)
+                and (TFunction(Ref).Level <= FCurFunction.Level) then
+              begin
+                Include(FCurFunction.FuncAttr, faNeedFPArg);
+              end;
             end;
-          end
+            cncrDelayed:
+              Include(Sym.Attr, eaDelayed);
+            cncrOther:
+              begin
+                // 已经确保 Ref.NodeKind in [nkMethod, nkFunc, nkExternalFunc]
+                // 取函数指针，需要用@
+                Sym.Typ := TFunctionDecl(Ref).ProceduralType;
+                Result := CreateProcAddrExpr(Sym);
+              end;
           else
             Sym.Typ := TFunctionDecl(Ref).ProceduralType;
+          end;
         end;
 
         nkBuiltinFunc: begin
@@ -2386,24 +2618,26 @@ type
     if (Result <> nil) and (Result.Typ = nil) then Result.Typ := Sym.Typ;
   end;
 
+  function CheckInst(un: TUnaryExpr): TExpr; forward;
+
   function CheckSubSymbol(bin: TBinaryExpr): TExpr;  // opMEMBER
 
-    function CheckRecPtr(typ: TPointerType; sym: TSymbolExpr): TSymbol;
+    procedure TryAddInstOp;
+    var
+      typ: TPointerType;
+      InstE: TUnaryExpr;
+      L: TExpr;
     begin
-      if typ.RefType <> nil then
-        case typ.RefType.TypeCode of
-          typRecord: begin
-            Result := TRecordType(typ.RefType).FindSymbol(sym.Name);
-            Exit;
-          end;
-          typObject: begin
-            Result := TObjectType(typ.RefType).FindSymbol(Sym.Name);
-            Exit;
-          end;
-        end;
-
-      ParseError(bin.Coord, SErr_InvalidOperand);
-      Result := nil;
+      typ := TPointerType(bin.Left.Typ);
+      if (typ.RefType <> nil) and (typ.RefType.TypeCode in [typRecord, typObject]) then
+      begin
+        L := bin.Left;
+        L.Detach;
+        InstE := CreateUnaryExpr(opINST, L);
+        InstE.Coord := InstE.Operand.Coord;
+        CheckInst(InstE);
+        bin.Left := InstE;
+      end;
     end;
 
     function IsConstructor(Ref: TSymbol): Boolean;
@@ -2414,7 +2648,7 @@ type
     Ref: TSymbol;
     Sym: TSymbolExpr;
   begin
-    Result := nil;
+    Result := bin;
     if bin.Right.OpCode <> opSYMBOL then
     begin
       ParseError(bin.Coord, SErr_InvalidOperand);
@@ -2426,6 +2660,11 @@ type
     Ref := Sym.Reference;
     if Ref = nil then
     begin
+      if bin.Left.Typ.TypeCode = typPointer then
+      begin
+        TryAddInstOp;
+      end;
+
       case bin.Left.Typ.TypeCode of
         // 因为NameScope和Module已经在ParseExpr中去掉了,因此这里不会出现
       {  typSymbol: begin
@@ -2437,24 +2676,32 @@ type
           else
             Ref := nil;
         end;}
-
+        {
         typPointer: begin
           NotAllowNode([nkType], bin.Left);
           Ref := CheckRecPtr(TPointerType(bin.Left.Typ), Sym);
-        end;
+        end;}
 
         typRecord: begin
           Ref := TRecordType(bin.Left.Typ).FindSymbol(Sym.Name);
           if bin.Left.IsTypeSymbol then
+          begin
             if ([saStatic, saClass] * Ref.Attr = []) and (Ref.NodeKind <> nkConstant) then
               ParseError(bin.Coord, SErr_SymbolNotClassOrStatic, [Sym.Name]);
+          end
+          else if (saStatic in Ref.Attr) then
+            DoWarning(bin.Coord, SWarn_SymbolThroughInstance, [Sym.Name]);
         end;
 
         typClass: begin
           Ref := TClassType(bin.Left.Typ).FindSymbol(Sym.Name);
           if bin.Left.IsTypeSymbol then
+          begin
             if ([saStatic, saClass] * Ref.Attr = []) and (Ref.NodeKind <> nkConstant) and not IsConstructor(Ref) then
               ParseError(bin.Coord, SErr_SymbolNotClassOrStatic, [Sym.Name]);
+          end
+          else if (saStatic in Ref.Attr) then
+            DoWarning(bin.Coord, SWarn_SymbolThroughInstance, [Sym.Name]);
         end;
 
         typClassRef: begin
@@ -2466,11 +2713,15 @@ type
         typObject: begin
           Ref := TObjectType(bin.Left.Typ).FindSymbol(Sym.Name);
           if bin.Left.IsTypeSymbol then
+          begin
             if ([saStatic, saClass] * Ref.Attr = []) and (Ref.NodeKind <> nkConstant) then
               ParseError(bin.Coord, SErr_SymbolNotClassOrStatic, [Sym.Name]);
+          end
+          else if (saStatic in Ref.Attr) then
+            DoWarning(bin.Coord, SWarn_SymbolThroughInstance, [Sym.Name]);
         end;
 
-        typInterface, typDispInterface:
+        typInterface:
           Ref := TInterfaceType(bin.Left.Typ).FindSymbol(Sym.Name);
         // todo 5: 以后要加helper类
       else
@@ -2494,36 +2745,54 @@ type
 
       case Ref.NodeKind of
         nkType: Sym.Typ := TType(Ref);
-        nkVariable, nkArgument, nkConstant,
+        nkVariable, nkFuncParam, nkConstant,
         nkField, nkProperty, nkIntfProperty: begin
           case Ref.NodeKind of
             nkVariable: Sym.Typ := TVariable(Ref).VarType;
-            nkArgument: Sym.Typ := TArgument(Ref).ArgType;
+            nkFuncParam: Sym.Typ := TFuncParam(Ref).ParamType;
             nkConstant: Sym.Typ := TConstant(Ref).ConstType;
             nkField: Sym.Typ := TField(Ref).FieldType;
             nkProperty: Sym.Typ := TProperty(Ref).PropType;
             nkIntfProperty: Sym.Typ := TIntfProperty(Ref).PropType;
           end;
 
+          if Ref.NodeKind = nkConstant then Include(Sym.Attr, eaConst);
+
           if Sym.Typ.TypeCode = typProcedural then
-            if IsCallNeed(Sym, Ref, TProceduralType(Sym.Typ)) then
+            if IsCallNeed(bin, Ref, TProceduralType(Sym.Typ)) then
             begin
-              Result := CreateCallExpr(Sym);
+              Result := CreateCallExpr(bin);
               CheckCall(TBinaryExpr(Result));
             end;
         end;
 
-        nkEnumElement: Sym.Typ := TEnumValue(Ref).EnumType;
+        nkEnumElement:
+          begin
+            Sym.Typ := TEnumValue(Ref).EnumType;
+            Include(Sym.Attr, eaConst);
+          end;
 
         nkFunc, nkMethod, nkExternalFunc: begin
           Sym.Typ := FContext.FUntype;
-          if IsCallNeed(Sym, Ref, nil) then
-          begin
-            Result := CreateCallExpr(Sym);
-            CheckCall(TBinaryExpr(Result));
-          end
+          case CallNeedCheck(bin, Ref, nil) of
+            cncrNeed:
+              begin
+                Result := CreateCallExpr(bin);
+                CheckCall(TBinaryExpr(Result));
+              end;
+            cncrDelayed:
+              Include(bin.Attr, eaDelayed);
+            cncrOther:
+              begin
+                // 已经确保 Ref.NodeKind in [nkMethod, nkFunc, nkExternalFunc]
+                // 取函数指针，需要用@
+                Sym.Typ := TFunctionDecl(Ref).ProceduralType;
+                bin.Typ := Sym.Typ;
+                Result := CreateProcAddrExpr(bin);
+              end;
           else
             Sym.Typ := TFunctionDecl(Ref).ProceduralType;
+          end;
         end;
 
         nkBuiltinFunc: begin
@@ -2539,14 +2808,17 @@ type
     end;
 
     if bin <> nil then
+    begin
       bin.Typ := Sym.Typ;
+      if eaConst in Sym.Attr then Include(bin.Attr, eaConst);
+    end;
   end;
 
   function CheckInst(un: TUnaryExpr): TExpr;
   var
     Typ: TType;
   begin
-    Result := nil;
+    Result := un;
     NotAllowNode([nkType], un.Operand);
     Typ := un.Operand.Typ;
     case Typ.TypeCode of
@@ -2559,9 +2831,9 @@ type
           Result := CheckAdjustCall(un);
       end;
       typPAnsiChar:
-        un.Typ := FContext.FTypes[typAnsiChar];
+        un.Typ := FContext.FAnsiCharType;
       typPWideChar:
-        un.Typ := FContext.FTypes[typWideChar];
+        un.Typ := FContext.FWideCharType;
     else
       ParseError(un.Coord, SErr_InvalidOperand);
     end;
@@ -2579,7 +2851,6 @@ type
     R := bin.Right.Typ;
     if L.TypeCode = typSubrange then L := TSubrangeType(L).BaseType;
     if R.TypeCode = typSubrange then R := TSubrangeType(R).BaseType;
-
     if L.IsInteger then
     begin
       if not R.IsInteger then
@@ -2590,11 +2861,11 @@ type
     begin
       if not R.IsBoolean then
         ParseError(bin.Coord, SErr_InvalidOperand);
-      bin.Typ := FContext.FTypes[typBoolean];
+      bin.Typ := FContext.FBooleanType;
     end
-    else if L.TypeCode in [typAnsiChar, typWideChar] then
+    else if L.TypeCode = typChar then
     begin
-      if not (R.TypeCode in [typAnsiChar, typWideChar]) then
+      if R.TypeCode <> typChar then
         ParseError(bin.Coord, SErr_InvalidOperand);
       bin.Typ := L;
     end
@@ -2608,19 +2879,21 @@ type
       bin.Typ := FContext.FIntegerType;
       ParseError(bin.Coord, SErr_InvalidOperand);
     end;
+    if (eaConst in bin.Left.Attr) and (eaConst in bin.Right.Attr) then
+      Include(bin.Attr, eaConst);
   end;
 
   procedure CheckIndexProperty(bin: TBinaryExpr; Ref: TSymbol);
   var
-    Args: TList;
+    Args: TFuncParamList;
   begin
     case Ref.NodeKind of
       nkProperty: begin
-        Args := TProperty(Ref).Args;
+        Args := TProperty(Ref).Params;
         bin.Typ := TProperty(Ref).PropType;
       end;
       nkIntfProperty: begin
-        Args := TIntfProperty(Ref).Args;
+        Args := TIntfProperty(Ref).Params;
         bin.Typ := TIntfProperty(Ref).PropType;
       end;
     else
@@ -2642,7 +2915,7 @@ type
       typClass:
         DefProp := TClassType(LTyp).DefaultProp;
 
-      typInterface, typDispInterface:
+      typInterface:
         DefProp := TInterfaceType(LTyp).DefaultProp;
     else
       Exit;
@@ -2665,9 +2938,9 @@ type
       if t2.TypeCode = typSubrange then t2 := TSubrangeType(t2).BaseType;
       case t1.TypeCode of
         typEnum: Result := t1 = t2;
-        typShortint..typUInt64:
-          Result := t2.TypeCode in [typShortint..typUInt64, typVariant..typOleVariant];
-        typVariant..typOleVariant:
+        typInt:
+          Result := t2.TypeCode in [typInt, typVariant];
+        typVariant:
           Result := True;
       else
         Result := t1.TypeCode = typ.TypeCode;
@@ -2709,9 +2982,9 @@ type
       if t2.TypeCode = typSubrange then t2 := TSubrangeType(t2).BaseType;
       case t1.TypeCode of
         typEnum: Result := t1 = t2;
-        typShortint..typUInt64:
-          Result := t2.TypeCode in [typShortint..typUInt64, typVariant..typOleVariant];
-        typVariant..typOleVariant:
+        typInt:
+          Result := t2.TypeCode in [typInt, typVariant];
+        typVariant:
           Result := True;
       else
         Result := t1.TypeCode = typ.TypeCode;
@@ -2729,17 +3002,27 @@ type
 
     Result := True;
     case Typ.TypeCode of
-      typAnsiString, typShortString, typPAnsiChar:
+      typString:
         begin
-          ElemTyp := FContext.FTypes[typAnsiChar];
-          if not CheckIndiceType(E.Typ, FContext.FTypes[typLongint]) then
+          if TStringType(Typ).Kind in [strAnsi, strAShort] then
+            ElemTyp := FContext.FAnsiCharType
+          else
+            ElemTyp := FContext.FWideCharType;
+          if not CheckIndiceType(E.Typ, FContext.FLongIntType) then
             ParseError(E.Coord, SErr_IncompatibleTypes);
         end;
 
-      typWideString, typUnicodeString, typPWideChar:
+      typPAnsiChar:
         begin
-          ElemTyp := FContext.FTypes[typWideChar];
-          if not CheckIndiceType(E.Typ, FContext.FTypes[typLongint]) then
+          ElemTyp := FContext.FAnsiCharType;
+          if not CheckIndiceType(E.Typ, FContext.FLongIntType) then
+            ParseError(E.Coord, SErr_IncompatibleTypes);
+        end;
+
+      typPWideChar:
+        begin
+          ElemTyp := FContext.FWideCharType;
+          if not CheckIndiceType(E.Typ, FContext.FLongIntType) then
             ParseError(E.Coord, SErr_IncompatibleTypes);
         end;
 
@@ -2749,14 +3032,14 @@ type
             ParseError(E.Coord, SErr_ArrayRequired);
           ElemTyp := TPointerType(Typ).RefType;
           if ElemTyp = nil then ElemTyp := FContext.FUntype;
-          if not CheckIndiceType(E.Typ, FContext.FTypes[typLongint]) then
+          if not CheckIndiceType(E.Typ, FContext.FLongIntType) then
             ParseError(E.Coord, SErr_IncompatibleTypes);
         end;
 
       typDynamicArray:
         begin
           ElemTyp := TDynamicArrayType(Typ).ElementType;
-          if not CheckIndiceType(E.Typ, FContext.FTypes[typLongint]) then
+          if not CheckIndiceType(E.Typ, FContext.FLongIntType) then
             ParseError(E.Coord, SErr_IncompatibleTypes);
         end;
 
@@ -2764,6 +3047,13 @@ type
         begin
           ElemTyp := TArrayType(Typ).ElementType;
           if not CheckIndiceType(E.Typ, TArrayType(Typ).Range) then
+            ParseError(E.Coord, SErr_IncompatibleTypes);
+        end;
+
+      typVariant:
+        begin
+          ElemTyp := FContext.FVariantType;
+          if not CheckIndiceType(E.Typ, FContext.FLongIntType) then
             ParseError(E.Coord, SErr_IncompatibleTypes);
         end;
     else
@@ -2777,13 +3067,15 @@ type
   function CheckIndex(bin: TBinaryExpr): TExpr;
   var
     E: TExpr;
+    List: TListExpr;
+    I: Integer;
     Typ: TType;
     Ref: TSymbol;
     IsArrayProp, IsDefProp: Boolean;
   begin
-    Result := nil;
-    E := bin.Right;
-    if (E = nil) or (TUnaryExpr(E).Operand = nil) then
+    Result := bin;
+    List := TListExpr(bin.Right);
+    if List.Count = 0 then
     begin
       ParseError(bin.Coord, SErr_ExpectExpression);
       Exit;
@@ -2803,14 +3095,14 @@ type
     IsDefProp := False;
     if Ref <> nil then
       case Ref.NodeKind of
-        nkProperty: IsArrayProp := TProperty(Ref).CountOfArgs > 0;
-        nkIntfProperty: IsArrayProp := TIntfProperty(Ref).CountOfArgs > 0;
+        nkProperty: IsArrayProp := TProperty(Ref).ParamCount > 0;
+        nkIntfProperty: IsArrayProp := TIntfProperty(Ref).ParamCount > 0;
       end;
 
     if not IsArrayProp then
       case bin.Left.Typ.TypeCode of
         typClass: IsDefProp := TClassType(bin.Left.Typ).DefaultProp <> nil;
-        typInterface, typDispInterface:
+        typInterface:
           IsDefProp := TInterfaceType(bin.Left.Typ).DefaultProp <> nil;
       end;
 
@@ -2828,12 +3120,11 @@ type
     end
     else
     begin
-      E := TUnaryExpr(E).Operand;
+      E := List.Items[0];
       case bin.Left.Typ.TypeCode of
-        typAnsiString..typShortString,
-        typPAnsiChar, typPWideChar:
+        typString, typPAnsiChar, typPWideChar:
           begin
-            if E.Next <> nil then
+            if List.Count > 1 then
               ParseError(bin.Coord, SErr_ArrayRequired);
             Typ := bin.Left.Typ;
             CheckIndexType(Typ, E);
@@ -2843,20 +3134,24 @@ type
         typArray, typDynamicArray, typPointer:
           begin
             Typ := bin.Left.Typ;
+            I := 0;
             repeat
               if not CheckIndexType(Typ, E) then Break;
               bin.Typ := Typ;
-              E := TExpr(E.Next);
-            until (E = nil) or (Typ = nil);
+              Inc(I);
+              E := List.Items[I];
+            until (I >= List.Count) or (Typ = nil);
           end;
 
       else
-        if bin.Left.Typ.TypeCode in [typClass, typInterface, typDispInterface] then
+        if bin.Left.Typ.TypeCode in [typClass, typInterface] then
           ParseError(bin.Coord, SErr_NoDefaultProp)
         else
           ParseError(bin.Coord, SErr_ArrayRequired);
         bin.Typ := FContext.FAnytype;
       end;
+      if bin.Typ.TypeCode = typVariant then
+        Include(bin.Attr, eaVarOp);
     end;
 
     // 如果这个Property返回一个过程变量,应该检查是否转为调用
@@ -2867,103 +3162,335 @@ type
       Result := CheckAdjustCall(bin);
   end;
 
-  procedure CheckAddrOp(un: TUnaryExpr);
-    function IsVarConstField(E: TExpr): Boolean;
-    var
-      Sym: TSymbol;
+  procedure NormalAddrOp(un: TUnaryExpr);
+  begin
+    // 根据$T+状态来调整指针的类型
+    if FTypedAddress then
     begin
-      Sym := E.GetReference;
-      Result := (Sym <> nil) and (Sym.NodeKind in [nkField, nkArgument, nkVariable]);
+      if un.Operand.Typ.TypeCode = typUntype then
+        un.Typ := FContext.FPointerType
+      else begin
+        un.Operand.Typ.CreatePointerType(FPointerSize);
+        un.Typ := un.Operand.Typ.PointerType;
+      end;
+    end
+    else
+      un.Typ := FContext.FPointerType;
+  end;
+
+  function CheckDblAddrOp(un: TUnaryExpr): TExpr;
+  begin
+    if not (un.HasMemory and un.Operand.Typ.IsProcedural) then
+      ParseError(un.Coord, SErr_InvalidOperand);
+    un.OpCode := opADDR;
+    NormalAddrOp(un);
+    if (psInConstExpr in FCurStates) and not (psNotAllowAddr in FCurStates) then
+    begin
+      Result := ConstantFold(un);
     end;
+  end;
+
+  function CheckAddrOp(un: TUnaryExpr): TExpr;
   var
     Func: TFunctionDecl;
     Ref: TSymbol;
   begin
-    // @@VarOfProcedural
-    if (un.Parent <> nil) and (un.Parent.OpCode = opADDR) then
+    { 关于对函数指针的@@操作符。在这里无需保留两个@节点。
+      AST 表示调用和取地址已经很明确
+    }
+    Result := un;
+
+    if not (un.Operand.HasMemory or un.Operand.IsFunction) then
     begin
-      // @@操作符必须指向变量、参数、字段
-      if not (IsVarConstField(un) and un.Operand.Typ.IsProcedural) then
-        ParseError(un.Coord, SErr_InvalidOperand);
-      un.Typ := FContext.FTypes[typPointer];
+      ParseError(un.Coord, SErr_InvalidOperand);
+      un.Typ := FContext.FPointerType;
+      Exit;
+    end;
+
+    Ref := un.Operand.GetReference;
+
+    // 对Self不可使用@
+    if (Ref <> nil) and (Ref.NodeKind = nkVariable)
+        and (vaSelf in TVariable(Ref).VarAttr) then
+    begin
+      ParseError(un.Coord, SErr_InvalidOperand);
+      un.Typ := FContext.FPointerType;
+      Exit;
+    end;
+
+    if Assigned(Ref) and (Ref.NodeKind in [nkFunc, nkMethod, nkExternalFunc]) then
+      Func := TFunctionDecl(Ref)
+    else
+      Func := nil;
+
+    if (Func <> nil) then
+    begin
+      // @proc 取函数/方法地址，fpc最终类型是TProceduralType
+      // delphi为 TPointerType. 并且不接受@obj.method 这种形式
+      if synProcvarFpc in FSyntaxOptions then
+      begin
+        un.Typ := Func.ProceduralType;
+      end
+      else
+      begin
+        un.Typ := FContext.FPointerType;
+        // todo 1: 如果operand不是tobject.classinfo 这种用类名引用的，则报错
+      end;
+      if Func.IsOverload then Include(un.Attr, eaDelayed);
+    end
+    else if un.Operand.Typ.TypeCode = typProcedural then
+    begin
+      // 对于@procvar, fpc解释为取变量地址
+      if synProcvarFpc in FSyntaxOptions then
+        NormalAddrOp(un)
+      else begin
+        // 取变量存贮的值。把@操作符去掉
+        Result := un.Operand;
+        Result.Detach;
+        if Result.Typ = nil then
+          Result.Typ := FContext.FPointerType;
+        SubstituteExpr(un, Result);
+        Self.ReleaseExpr(un);
+        un := nil;
+      end;
     end
     else
     begin
-      if not (un.Operand.HasMemory or un.Operand.IsFunction) then
-      begin
-        ParseError(un.Coord, SErr_InvalidOperand);
-        un.Typ := FContext.FTypes[typPointer];
-        Exit;
+      NormalAddrOp(un);
+    end;
+
+    if (un <> nil) and (psInConstExpr in FCurStates)
+        and not (psNotAllowAddr in FCurStates) then
+    begin
+      Result := ConstantFold(un);
+    end;
+
+  end;
+
+  function CheckInherited(E: TUnaryExpr): TExpr;
+
+    function GetBaseSymbol(const s: TSymString): TSymbol;
+    var
+      parent: TSymbol;
+    begin
+      Result := nil;
+      parent := FTopFunction.Parent;
+      if parent.NodeKind <> nkType then Exit;
+      case TType(parent).TypeCode of
+        typClass:
+          Result := TClassType(parent).FindBaseSymbol(S);
+        typObject:
+          Result := TObjectType(parent).FindBaseSymbol(S);
       end;
+    end;
 
-      Ref := un.Operand.GetReference;
-      if (Ref <> nil) and (Ref.NodeKind = nkVariable)
-          and (vaSelf in TVariable(Ref).VarAttr) then
+  var
+    Sym: TSymbol;
+    CallE: TBinaryExpr;
+    SymE: TSymbolExpr;
+    i: Integer;
+  begin
+    Result := E;
+    // 必须在方法或其嵌套函数之中。
+    // 所调用方法必须是基类所有。
+    if (FTopFunction = nil) or (FTopFunction.NodeKind <> nkMethod) then
+    begin
+      ParseError(E.Coord, SErr_InheritedNotAllow);
+      Exit;
+    end;
+
+    { 几种格式：
+      inherited; // ok 单独一个inherited，表示调用基类的同名方法。
+      inherited docheck; // ok 调用基类的指定方法
+      result := inherited docheck; // ok 放在表达式中
+      result := inherited prop // ok 属性
+
+      result := inherited;  // error 位于表达式中的inherited 要带标识符和参数
+    }
+    if E.Operand = nil then
+    begin
+      Sym := GetBaseSymbol(FTopFunction.Name);
+      if Sym = nil then
       begin
-        ParseError(un.Coord, SErr_InvalidOperand);
-        un.Typ := FContext.FTypes[typPointer];
-        Exit;
-      end;
-
-      // todo 1: 还需要好好研究
-      // @proc/@procvar 不管$T的状态，都是无类型指针
-      // 根据$T+状态来调整指针的类型
-      if FTypedAddress then
-      begin
-      //  Ref := un.Operand.GetReference;
-        if Assigned(Ref) and (Ref.NodeKind in [nkFunc, nkMethod, nkExternalFunc]) then
-          Func := TFunctionDecl(Ref)
-        else
-          Func := nil;
-
-        if Func <> nil then
-        begin
-          un.Typ := un.Operand.Typ;
-          if Func.IsOverload then Include(un.Attr, eaDelayed);
-        end
-        {else if Assigned(Ref) and (Ref.NodeKind in [nkVariable, nkArgument, nkField]) then
-        // @procvar 这种情形, 结果都是无类型指针
-          un.Typ := Parser.FContext.FTypes[typPointer]}
-        else if un.Operand.Typ.TypeCode = typUntype then
-          un.Typ := FContext.FTypes[typPointer]
+        if E.Parent <> nil then
+          // inherited 处于表达式中不能省略所调用的方法标识符
+          ParseError(E.Coord, SErr_InheritedExpectId)
         else begin
-          un.Operand.Typ.CreatePointerType(FPointerSize);
-          un.Typ := un.Operand.Typ.PointerType;
-        end;
-      end
-      else
-        un.Typ := FContext.FTypes[typPointer];
+          // 假如基类没有同名方法，且不在表达式，则忽略此句。
+          // 创建一个空调用
+          CallE := CreateBinaryExpr(opCALL);
+          CallE.Coord := E.Coord;
+          CallE.Typ := FContext.FUntype;
+          CallE.Left := CreateSymbolExpr(FContext.FNoopFunc.Name);
+          TSymbolExpr(CallE.Left).Reference := FContext.FNoopFunc;
+          CallE.Left.Typ := FContext.FUntype;
+          CallE.Left.Coord := E.Coord;
 
-      {
-      // 根据$T+状态来调整指针的类型,但函数类型不受限制
-      Func := un.Operand.GetFunctionSymbol;
-      if Func <> nil then
-      begin
-        un.Typ := un.Operand.Typ;
-        if Func.IsOverload then Include(un.Attr, eaDelayed);
+          CallE.Right := CreateListExpr;
+          CallE.Right.Coord := E.Coord;
+          CallE.Right.Typ := FContext.FUntype;
+
+          Self.ReleaseExpr(E);
+          Result := CallE;
+        end;
+
+        Exit;
       end
-      else if un.HasMemory then
+      else if Sym.NodeKind <> nkMethod then
       begin
-        if un.Operand.Typ.TypeCode = typProcedural then
-          un.Typ := un.Operand.Typ
-        else if Parser.FTypedAddress then
-        begin
-          un.Operand.Typ.CreatePointerType(Parser.FCntxInfo.PointerSize);
-          un.Typ := un.Operand.Typ.PointerType;
-        end
-        else
-          un.Typ := Parser.FContext.FTypes[typPointer];
+        ParseError(E.Coord, SErr_IncompatibleTypes);
+        Exit;
+      end;
+
+      CallE := CreateBinaryExpr(opCALL);
+      CallE.Coord := E.Coord;
+      Include(CallE.Attr, eaInherited);
+      CallE.Left := CreateSymbolExpr(Sym.Name);
+      TSymbolExpr(CallE.Left).Reference := Sym;
+      CallE.Left.Typ := FContext.FUntype;
+      CallE.Left.Coord := E.Coord;
+      Include(CallE.Left.Attr, eaInherited);
+
+      CallE.Right := CreateListExpr;
+      CallE.Right.Typ := FContext.FUntype;
+      CallE.Right.Coord := E.Coord;
+
+      // copy args
+      for i := 0 to FTopFunction.ParamCount - 1 do
+      begin
+        SymE := CreateSymbolExpr(FTopFunction.Params[i].Name);
+        SymE.Coord := E.Coord;
+        SymE.Reference := FTopFunction.Params[i];
+        TListExpr(CallE.Right).Add(symE);
+      end;
+      SubstituteExpr(E, CallE);
+      Self.ReleaseExpr(E);
+      CheckCall(CallE);
+      Result := CallE;
+    end
+    else
+    begin
+      Assert(E.Operand.OpCode = opSYMBOL, 'CheckInherited: Expected left only symbol');
+      Sym := GetBaseSymbol(TSymbolExpr(E.Operand).Name);
+      if Sym = nil then
+      begin
+        ParseError(E.Coord, SErr_UndeclaredIdent);
+        Exit;
       end
-      else
-        Parser.ParseError(un.Coord, SErr_InvalidOperand);
-}
+      else if not (Sym.NodeKind in [nkMethod, nkProperty, nkField]) then
+      begin
+        ParseError(E.Coord, SErr_IncompatibleTypes);
+        Exit;
+      end;
+
+      Result := CreateSymbolExpr(Sym.Name);
+      TSymbolExpr(Result).Reference := Sym;
+      Result.Typ := FContext.FUntype;
+      Result.Coord := E.Coord;
+      Include(Result.Attr, eaInherited);
+      SubstituteExpr(E, Result);
+      Self.ReleaseExpr(E);
+      CheckSymbol(TSymbolExpr(Result));
     end;
   end;
 
-  procedure CheckInherited(E: TExpr);
+  procedure CheckInherited2(E: TBinaryExpr);
+
+    function GetBaseSymbol(const s: TSymString): TSymbol;
+    var
+      parent: TSymbol;
+    begin
+      Result := nil;
+      parent := FTopFunction.Parent;
+      if parent.NodeKind <> nkType then Exit;
+      case TType(parent).TypeCode of
+        typClass:
+          Result := TClassType(parent).FindBaseSymbol(S);
+        typObject:
+          Result := TObjectType(parent).FindBaseSymbol(S);
+      end;
+    end;
+
+  var
+    Sym: TSymbol;
   begin
-    // todo: no impl
-    E.Typ := FContext.FAnyType;
+    // 必须在方法或其嵌套函数之中。
+    // 所调用方法必须是基类所有。
+    if (FTopFunction = nil) or (FTopFunction.NodeKind <> nkMethod) then
+    begin
+      ParseError(E.Coord, SErr_InheritedNotAllow);
+      Exit;
+    end;
+
+    { 几种格式：
+      inherited; // ok 单独一个inherited，表示调用基类的同名方法。
+      inherited docheck; // ok 调用基类的指定方法
+      result := inherited docheck; // ok 放在表达式中
+
+      result := inherited;  // error 位于表达式中的inherited 要带标识符和参数
+      result := inherited prop // ok 属性或字段
+    }
+    if (E.Left = nil) then
+    begin
+      Sym := GetBaseSymbol(FTopFunction.Name);
+      if Sym = nil then
+      begin
+        if E.Parent <> nil then
+          // inherited 处于表达式不能省略所调用的方法标识符
+          ParseError(E.Coord, SErr_InheritedExpectId)
+        else begin
+          // 假如基类没有同名方法，且不在表达式，则忽略此句。
+          // 创建一个空调用
+          E.Typ := FContext.FUntype;
+          E.Left := CreateSymbolExpr(FContext.FNoopFunc.Name);
+          TSymbolExpr(E.Left).Reference := FContext.FNoopFunc;
+          E.Left.Typ := FContext.FUntype;
+          E.Left.Coord := E.Coord;
+
+          E.Right := CreateListExpr;
+          E.Right.Coord := E.Coord;
+          E.Right.Typ := FContext.FUntype;
+        end;
+
+        Exit;
+      end
+      else if Sym.NodeKind <> nkMethod then
+      begin
+        ParseError(E.Coord, SErr_IncompatibleTypes);
+        Exit;
+      end;
+
+      E.Left := CreateSymbolExpr(Sym.Name);
+      TSymbolExpr(E.Left).Reference := Sym;
+      E.Left.Typ := FContext.FUntype;
+      E.Left.Coord := E.Coord;
+
+      E.Right := CreateListExpr;
+      E.Right.Coord := E.Coord;
+      // 构造参数。
+    end
+    else
+    begin
+      Assert(E.Left.OpCode = opSYMBOL, 'CheckInherited: Expected left only symbol');
+      Sym := GetBaseSymbol(TSymbolExpr(E.Left).Name);
+      if Sym = nil then
+      begin
+        ParseError(E.Coord, SErr_UndeclaredIdent);
+        Exit;
+      end
+      else if Sym.NodeKind <> nkMethod then
+      begin
+        ParseError(E.Coord, SErr_IncompatibleTypes);
+        Exit;
+      end;
+
+      TSymbolExpr(E.Left).Reference := Sym;
+      E.Left.Typ := FContext.FUntype;
+      if E.Right = nil then E.Right := CreateListExpr;
+//      CheckSymbol(E.Left);
+    end;
+
+    CheckCall(E);
   end;
 
   procedure CheckIntConst(E: TConstExpr);
@@ -2980,53 +3507,79 @@ type
       if I32 >= 0 then
       begin
         if I32 < 128 then
-          E.Typ := FContext.FTypes[typShortint]
+          E.Typ := FContext.FShortIntType
         else if I32 < 256 then
-          E.Typ := FContext.FTypes[typByte]
+          E.Typ := FContext.FByteType
         else if I32 < 32768 then
-          E.Typ := FContext.FTypes[typSmallint]
+          E.Typ := FContext.FSmallIntType
         else if I32 < 65536 then
-          E.Typ := FContext.FTypes[typWord]
+          E.Typ := FContext.FWordType
         else
-          E.Typ := FContext.FTypes[typLongint];
+          E.Typ := FContext.FLongIntType
       end
       else
       begin
         if I32 >= -128 then
-          E.Typ := FContext.FTypes[typShortint]
+          E.Typ := FContext.FShortIntType
         else if I32 >= -32768 then
-          E.Typ := FContext.FTypes[typSmallint]
+          E.Typ := FContext.FSmallIntType
         else
-          E.Typ := FContext.FTypes[typLongint];
+          E.Typ := FContext.FLongIntType;
       end;
     end
     else if I64 <= $ffffffff then
-      E.Typ := FContext.FTypes[typLongWord]
+      E.Typ := FContext.FLongWordType
     else if Int64Rec(I64).Hi and $80000000 = 0 then
-      E.Typ := FContext.FTypes[typInt64]
+      E.Typ := FContext.FInt64Type
     else
-      E.Typ := FContext.FTypes[typUInt64];
+      E.Typ := FContext.FUInt64Type;
     Include(E.Attr, eaConst);
   end;
 
-  function AdjustExpr(Expr: TExpr): TExpr; forward;
-
-  procedure CheckList(un: TUnaryExpr);
-  var
-    E: ^TExpr;
-    Temp: TExpr;
+  procedure CheckConst(E: TConstExpr);
   begin
-    E := @un.Operand;
-    while E^ <> nil do
+    case E.Value.VT of
+      vtInt, vtInt64: CheckIntConst(E);
+      vtReal:
+        E.Typ := FContext.FRealType;
+      vtCurr:
+        E.Typ := FContext.FCurrencyType;
+      vtStr, vtWStr:
+        E.Typ := FContext.FStringType;
+      vtAChr:
+        E.Typ := FContext.FAnsiCharType;
+      vtWChr:
+        E.Typ := FContext.FWideCharType;
+      vtBool:
+        E.Typ := FContext.FBooleanType;
+      vtPtr, vtSymbol, vtAddrOfSymbol, vtAddrOffset:
+        E.Typ := FContext.FPointerType;
+      vtSet:
+        Assert(False, 'CheckConst:vtSet');
+        //E.Typ := FContext.FEmptySetType;
+      vtArray, vtRecord:
+        // array,record 这种复合类型不会到此求值
+        Assert(False, 'CheckConst:vtArray/vtRecord');
+    end;
+    Include(E.Attr, eaConst);
+  end;
+
+  function DoCheck(Expr: TExpr): TExpr; forward;
+
+  procedure CheckList(un: TListExpr);
+  var
+    Temp: TExpr;
+    I: Integer;
+  begin
+    for I := 0 to un.Count - 1 do
     begin
-      Temp := AdjustExpr(E^);
+      Temp := DoCheck(un.Items[I]);
       if Temp <> nil then
-        E^ := Temp;
-      E := @(E^.Next);
+        un.Replace(I, Temp);
     end;
   end;
 
-  function AdjustExpr(Expr: TExpr): TExpr;
+  function DoCheck(Expr: TExpr): TExpr;
   var
     un: TUnaryExpr;
     bin: TBinaryExpr;
@@ -3035,29 +3588,31 @@ type
     Result := Expr;
     if Expr = nil then Exit;
     // 对已经标记为无效的也检查
+    // 对于Expr，可以替换自身，但不能替换它的父节点
 
     OldErr := FErrorCount;
     un := nil;
     bin := nil;
 
-    if Expr.ClassType = TUnaryExpr then
-    begin
-      un := TUnaryExpr(Expr);
-      if (un.OpCode = opLIST) then
-      begin // 对LIST单独处理
-        CheckList(un);
-        Expr := un;
+    case OpKinds[Expr.OpCode] of
+      opkUnary: begin
+        un := TUnaryExpr(Expr);
+        if un.OpCode <> opINHERITED then
+          DoCheck(un.Operand);
+      end;
+
+      opkBinary: begin
+        bin := TBinaryExpr(Expr);
+        //if bin.OpCode <> opINHERITED then
+          DoCheck(bin.Left);
+        if bin.OpCode <> opMEMBER then
+          DoCheck(bin.Right);
+      end;
+
+      opkList: begin
+        CheckList(TListExpr(Expr));
         Expr.Typ := FContext.FUntype;
-      end
-      else
-        AdjustExpr(un.Operand);
-    end
-    else if Expr.ClassType = TBinaryExpr then
-    begin
-      bin := TBinaryExpr(Expr);
-      AdjustExpr(bin.Left);
-      if bin.OpCode <> opMEMBER then
-        AdjustExpr(bin.Right);
+      end;
     end;
 
     if OldErr <> FErrorCount then
@@ -3088,6 +3643,7 @@ type
       opNEG, opPOS: CheckNegOp(un);
 
       opCALL: Result := CheckCall(bin);
+      opCAST: Result := CheckCast(bin);
 
       opMEMBER: Result := CheckSubSymbol(bin);
 
@@ -3097,50 +3653,34 @@ type
 
       opINDEX: Result := CheckIndex(bin);
 
-      opINHERITED: CheckInherited(bin);
+      opINHERITED: CheckInherited(un); //CheckInherited(bin);
 
-      opSET: ResolveSetType(un);
+      opSET: CheckSetOp(un);
 
       opLIST: begin end;
 
-      opADDR: CheckAddrOp(un);
+      opADDR: Result := CheckAddrOp(un);
+      opDBLADDR: Result := CheckDblAddrOp(un);
 
       opINST: Result := CheckInst(un);
 
       opNIL:
         begin
-          Expr.Typ := FContext.FTypes[typPointer];
+          Expr.Typ := FContext.FPointerType;
           Include(Expr.Attr, eaConst);
         end;
 
-      opINTCONST: CheckIntConst(TConstExpr(Expr));
+      opCONST: CheckConst(TConstExpr(Expr));
 
-      opBOOLCONST:
-        begin
-          Expr.Typ := FContext.FTypes[typBoolean];
-          Include(Expr.Attr, eaConst);
-        end;
-      opREALCONST:
-        begin
-          Expr.Typ := FContext.FRealType;
-          Include(Expr.Attr, eaConst);
-        end;
-      opSTRCONST:
-        begin
-          Expr.Typ := FContext.FStringType;
-          Include(Expr.Attr, eaConst);
-        end;
-      opCHARCONST:
-        begin
-          Expr.Typ := FContext.FCharType;
-          Include(Expr.Attr, eaConst);
-        end;
     else
       Expr.Typ := FContext.FIntegerType;
       ParseError(Expr.Coord, 'Invalid opcode');
     end;
 
+    if Expr <> Result then Expr := Result;
     Expr.Typ := Expr.Typ.OriginalType;
+    if (eaConst in Expr.Attr) and not (Expr.OpCode in [opRANGE, opNIL, opCONST, opSYMBOL]) then
+      Result := ConstantFold(Expr);
   end;
 
 var
@@ -3148,7 +3688,7 @@ var
   E: TExpr;
 begin
   OldErr := FErrorCount;
-  E := AdjustExpr(Expr);
+  E := DoCheck(Expr);
   if E <> nil then Expr := E;
   Result := (OldErr = FErrorCount) and not (eaInvalid in Expr.Attr);
   if not Result then Include(Expr.Attr, eaInvalid);

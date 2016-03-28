@@ -10,6 +10,8 @@ type
   ECompileContextError = class(Exception);
   EDifferenceVersion = class(Exception);
 
+  { EParserError }
+
   EParserError = class(Exception)
   private
     FFileName: String;
@@ -17,10 +19,16 @@ type
   public
     constructor Create(const AReason, AFileName: String;
       ARow, AColumn: Integer);
+    constructor CreateCoord(const Coord: TAstNodeCoord; const AReason: string);
+    constructor CreateCoordFmt(const Coord: TAstNodeCoord; const AReason: string; const Args: array of const);
     property FileName: String read FFileName;
     property Row: Integer read FRow;
     property Column: Integer read FColumn;
   end;
+
+  ENotConstant = class(EParserError);
+  EEvalConstant = class(EParserError);
+  EParseStop = class(EParserError);
 
   TErrorLevel = (elError, elWarning, elHint);
 
@@ -45,52 +53,127 @@ type
   TSystemRoutine = (
     srIntOverflow, srOutOfRange, srIOCheck,
     srRaiseExcept, srSafecallCheck, srHandleSafecallExcept,
-    srHandleCtorExcept,
+    srHandleCtorExcept, srTerminated, srHandleFinally,
+    srRethrow, srIsClass, srAsClass, srFreeAndNil,
 
     srInt64Div, srInt64Mod, srRound, srTrunc,
 
     srAStrClr, srAStrAddRef, srAStrNew, srAStrPtr, srAStrLength,
-    srAStrComp, srAStrEqual, srAStrAsg, srAStrAsgCopy, srAStrSetLength,
-    srAStrCopy, srAStrDelete, srAStrInsert, srAStrFromSStr, srAStrFromWStr,
+    srAStrAsg, srAStrAsgCopy, srAStrSetLength, srAStrCopy, srAStrDelete,
+    srAStrInsert, srAStrFromSStr, srAStrFromWStr,
     srAStrFromUStr, srAStrFromACh, srAStrFromWCh, srAStrFromPACh,
     srAStrFromPAChLen, srAStrFromPWCh, srAStrFromPWChLen,
     srAStrFromAArray, srAStrFromWArray, srAStrCat, srAStrCat3, srAStrCatN,
 
     srWStrClr, srWStrAddRef, srWStrNew, srWStrPtr, srWStrLength,
-    srWStrComp, srWStrEqual, srWStrAsg, srWStrAsgCopy, srWStrSetLength,
-    srWStrCopy, srWStrDelete, srWStrInsert, srWStrFromSStr, srWStrFromAStr,
+    srWStrAsg, srWStrAsgCopy, srWStrSetLength, srWStrCopy, srWStrDelete,
+    srWStrInsert, srWStrFromSStr, srWStrFromAStr,
     srWStrFromUStr, srWStrFromACh, srWStrFromWCh, srWStrFromPACh,
     srWStrFromPAChLen, srWStrFromPWCh, srWStrFromPWChLen,
     srWStrFromAArray, srWStrFromWArray, srWStrCat, srWStrCat3, srWStrCatN,
 
     srUStrClr, srUStrAddRef, srUStrNew, srUStrPtr, srUStrLength,
-    srUStrComp, srUStrEqual, srUStrAsg, srUStrAsgCopy, srUStrSetLength,
-    srUStrCopy, srUStrDelete, srUStrInsert, srUStrFromSStr, srUStrFromAStr,
+    srUStrAsg, srUStrAsgCopy, srUStrSetLength, srUStrCopy, srUStrDelete,
+    srUStrInsert, srUStrFromSStr, srUStrFromAStr,
     srUStrFromWStr, srUStrFromACh, srUStrFromWCh, srUStrFromPACh,
     srUStrFromPAChLen, srUStrFromPWCh, srUStrFromPWChLen,
     srUStrFromAArray, srUStrFromWArray, srUStrCat, srUStrCat3, srUStrCatN,
 
-    srSStrComp, srSStrEqual, srSStrAsg,
-    srSStrCopy, srSStrDelete, srSStrInsert, srSStrFromAStr, srSStrFromWStr,
-    srSStrFromUStr, srSStrFromACh, srSStrFromWCh, srSStrFromPACh,
-    srSStrFromPAChLen, srSStrFromPWCh, srSStrFromPWChLen,
-    srSStrFromAArray, srSStrFromWArray, srSStrCat, srSStrCat3, srSStrCatN,
+    srSStrClr, srSStrLength, srSStrAsg, srSStrCopy, srSStrSetLength,
+    srSStrDelete, srSStrInsert,
+    srSStrFromAStr, srSStrFromWStr, srSStrFromUStr, srSStrFromACh,
+    srSStrFromWCh, srSStrFromPACh, srSStrFromPAChLen, srSStrFromPWCh,
+    srSStrFromPWChLen, srSStrFromAArray, srSStrFromWArray, srSStrCat,
+    srSStrCat3, srSStrCatN,
 
-    srVarClr, srVarAddRef, srVarOp, srVarNot, srVarNeg, srVarCopy,
+    srSWStrClr, srSWStrLength, srSWStrAsg, srSWStrCopy, srSWStrSetLength,
+    srSWStrDelete, srSWStrInsert,
+    srSWStrFromAStr, srSWStrFromWStr, srSWStrFromUStr, srSWStrFromACh,
+    srSWStrFromWCh, srSWStrFromPACh, srSWStrFromPAChLen, srSWStrFromPWCh,
+    srSWStrFromPWChLen, srSWStrFromAArray, srSWStrFromWArray, srSWStrCat,
+    srSWStrCat3, srSWStrCatN,
+
+    srAStrComp, srWStrComp, srUStrComp, srSStrComp, srSWStrComp,
+    srAArrComp, srWArrComp,
+
+    srAStrCompWStr, srAStrCompUStr, srAStrCompSStr, srAStrCompSWStr,
+    srAStrCompPa, srAStrCompPw, srAStrCompAarr, srAStrCompWarr,
+    srAStrCompACh, srAStrCompWCh,
+
+    srWStrCompAStr, srWStrCompUStr, srWStrCompSStr, srWStrCompSWStr,
+    srWStrCompPa, srWStrCompPw, srWStrCompAarr, srWStrCompWarr,
+    srWStrCompACh, srWStrCompWCh,
+
+    srUStrCompAStr, srUStrCompWStr, srUStrCompSStr, srUStrCompSWStr,
+    srUStrCompPa, srUStrCompPw, srUStrCompAarr, srUStrCompWarr,
+    srUStrCompACh, srUStrCompWCh,
+
+    srSStrCompAStr, srSStrCompWStr, srSStrCompUStr, srSStrCompSWStr,
+    srSStrCompPa, srSStrCompPw, srSStrCompAarr, srSStrCompWarr,
+    srSStrCompACh, srSStrCompWCh,
+
+    srSWStrCompAStr, srSWStrCompWStr, srSWStrCompUStr, srSWStrCompSStr,
+    srSWStrCompPa, srSWStrCompPw, srSWStrCompAarr, srSWStrCompWarr,
+    srSWStrCompACh, srSWStrCompWCh,
+
+    srPaCompAStr, srPaCompWStr, srPaCompUStr, srPaCompSStr,
+    srPaCompSWStr, srPaCompAarr, srPaCompWarr, srPaCompACh, srPaCompWCh,
+
+    srPwCompAStr, srPwCompWStr, srPwCompUStr, srPwCompSStr,
+    srPwCompSWStr, srPwCompAarr, srPwCompWarr, srPwCompACh, srPwCompWCh,
+
+    srAarrCompAStr, srAarrCompWStr, srAarrCompUStr, srAarrCompSStr,
+    srAarrCompSWStr, srAarrCompPa, srAarrCompPw, srAarrCompWarr,
+    srAarrCompACh, srAarrCompWCh,
+
+    srWarrCompAStr, srWarrCompWStr, srWarrCompUStr, srWarrCompSStr,
+    srWarrCompSWStr, srWarrCompPa, srWarrCompPw, srWarrCompAarr,
+    srWarrCompACh, srWarrCompWCh,
+
+    srAChCompAStr, srAChCompWStr, srAChCompUStr, srAChCompSStr,
+    srAChCompSWStr, srAChCompPa, srAChCompPw, srAChCompAarr,
+    srAChCompWarr,
+
+    srWChCompAStr, srWChCompWStr, srWChCompUStr, srWChCompSStr,
+    srWChCompSWStr, srWChCompPa, srWChCompPw, srWChCompAarr,
+    srWChCompWarr,
+
+    srVarClr, srVarAddRef, srVarOp, srVarNot, srVarNeg, srVarComp,
+    srVarCopy, srVarArrayGet, srVarArraySet,
+    srVarFromShortint, srVarFromByte, srVarFromSmallint, srVarFromWord,
+    srVarFromLongint, srVarFromLongWord, srVarFromInt64, srVarFromUInt64,
+    srVarFromAChr, srVarFromWChr,
+    srVarFromReal, srVarFromBool, srVarFromDateTime, srVarFromCurr,
+    srVarFromPAChr, srVarFromPWChr, srVarFromAStr,
+    srVarFromWStr, srVarFromUStr, srVarFromSStr, srVarFromSWStr,
+    srVarFromIntf, srVarFromDisp, srVarFromDynArr,
+
     srVar2AStr, srVar2WStr, srVar2UStr, srVar2SStr,
     srVar2Shortint, srVar2Byte, srVar2Smallint, srVar2Word,
     srVar2Longint, srVar2LongWord, srVar2Int64, srVar2UInt64,
     srVar2Single, srVar2Double, srVar2Currency, srVar2DateTime,
-    
-    srRecordClr, srRecordInit, srRecordAddRef,
+    srVar2Intf, srVar2Disp, srVar2DynArr,
 
-    srArrayClr, srArrayInit, srArrayAddRef,
+    srOleVarFromPAChr, srOleVarFromPWChr, srOleVarFromAStr,
+    srOleVarFromWStr, srOleVarFromUStr, srOleVarFromSStr,
+    srOleVarFromVar, srOleVarFromInt,
 
-    srIntfClr, srIntfAddRef,
+    srRecordClr, srRecordInit, srRecordAddRef, srRecordCopy,
 
-    srDynArrayClr, srDynArrayAddRef
-    // 以后再增加
+    srArrayClr, srArrayInit, srArrayAddRef, srArrayCopy,
+
+    srIntfClr, srIntfAddRef, srIntfCopy, srIntfCast,
+
+    srDynArrayClr, srDynArrayAddRef, srDynArrayAsg,
+
+    srSetIn, srSetUnion, srSetSub, srSetInterset, srSetRange, srSetElem,
+    srSetNE, srSetEQ, srSetLE, srSetGE, srSetInclude, srSetExclude,
+    srSetCopy, srSetInflate, srSetExpand,
+    srNSetIn, srNSetUnion, srNSetSub, srNSetInterset, srNSetRange, srNSetElem,
+    srNSetNE, srNSetEQ, srNSetLE, srNSetGE, srNSetInclude, srNSetExclude
   );
+
+  { TCompileContext }
 
   TCompileContext = class
   private
@@ -98,22 +181,51 @@ type
     FSystemLoaded: Boolean;
     FCUReader, FCUWriter: TObject;
     FOnError: TParserErrorEvent;
+
+    FCachedUnary, FCachedBinary, FCachedList,
+    FCachedConst, FCachedSymbol: TList;
+  //  FLoadingUnits: TList;
     FPendingParsers: TList;
-//    FLoadingUnits: TList;
-  public
     FNodes: TList;
+    procedure AddBuiltinProcs(M: TModule);
+    procedure AddTypes(M: TModule);
+    procedure AddInternalTypes(M: TModule);
+    procedure AddConstants(M: TModule);
+    procedure AddPredefinedElements(M: TModule);
+    procedure ClearNodes;
+    procedure ClearParsers;
+    function GetCachedExpr(List: TList): TExpr;
+  public
+    FPointerSize: Integer;       // 4 or 8
     FModules: TSymbolTable;
     FSystemUnit: TModule;
-    FTypes: array[typShortint..typText] of TType;
 
+    FShortIntType, FByteType, FSmallIntType, FWordType,
+    FLongIntType, FLongWordType, FInt64Type, FUInt64Type: TIntType;
+
+    FDoubleType, FSingleType, FCurrencyType, FCompType, FExtendedType: TNumericType;
+
+    FAnsiCharType, FWideCharType: TCharType;
+
+    FBooleanType, FByteBoolType, FWordBoolType, FLongBoolType: TBoolType;
+
+    FAnsiStringType, FWideStringType,
+    FUnicodeStringType, FShortStringType: TStringType;
+
+    FVariantType: TVariantType;
+    FOleVariantType: TVariantType;
+
+    FPAnsiCharType, FPWideCharType: TType;
     // 通用类型
-    FStringType: TType;
-    FCharType: TType;
-    FIntegerType: TType;
-    FCardinalType: TType;
-    FRealType: TType;
+    FStringType: TStringType;
+    FCharType: TCharType;
+    FIntegerType: TIntType;
+    FCardinalType: TIntType;
+    FRealType: TNumericType;
+    FNativeIntType, FNativeUIntType: TIntType;
     FPCharType: TType;
-    FNativeIntType, FNativeUIntType: TType;
+    FPointerType: TType;
+    FFileType: TType;
 
     FUntype: TType;     // 无类型(void)
     FAnytype: TType;    // 没有返回值的表达式, 它的类型就是这个, 代表异常情况
@@ -131,40 +243,51 @@ type
     FVarOpenArrayType: TOpenArrayType;
 
     FTrueConst, FFalseConst: TConstant;
+    FEmptySetVar: TVariable;
 
+    FNoopFunc: TSymbol;
     FSystemRoutines: array [TSystemRoutine] of TFunction;
 
-    procedure ClearNodes;
-    procedure ClearParsers;
-    function CreateAstNode(Typ: TAstNodeClass): TAstNode;
-    function GetSubrangeType(Ordinal: TTypeCode): TSubrangeType;
-    procedure AddBuiltinProcs(M: TModule);
-    procedure AddTypes(M: TModule);
-    procedure AddInternalTypes(M: TModule);
-    procedure AddConstants(M: TModule);
   public
-    IncludeDirs, UnitDirs: TStringList;
+  //  DefaultCodePage: Word;
+    IncDirs, LibDirs: TStringList;
     UnitOutputDir: string;
+    IsSystemUnit: Boolean;
+
     HasError: Boolean;
 
     constructor Create;
     destructor Destroy; override;
-    function TypeOfRange(r1, r2: Int64): TType;
-    procedure AddPredefinedElements(M: TModule);
+
+    function CreateAstNode(Typ: TAstNodeClass): TAstNode;
+    function GetCachedUnary: TUnaryExpr;
+    function GetCachedBinary: TBinaryExpr;
+    function GetCachedList: TListExpr;
+    function GetCachedConst: TConstExpr;
+    function GetCachedSymbol: TSymbolExpr;
+    procedure ReleaseExpr(E: TExpr);
+
     function CreateSymbol(SymClass: TSymbolClass): TSymbol;
+
+    function GetSubrangeType(Ordinal: TType): TSubrangeType;
+    function TypeOfRange(r1, r2: Int64): TType;
+
+    procedure AddNode(Node: TAstNode);
     procedure LoadSystemUnit;
+    procedure ResolveSystemSymbols;
     function LoadUnit(const UnitName: string): TModule; overload;
     function GetSystemRoutine(Routine: TSystemRoutine): TFunction;
 //    function LoadUnit(const UnitName: string; const ExpectTimeStamp: TTimeStamp): TModule; overload;
-    function Compile(const SrcFile, UnitFile: string; IsSys, DoGenCode: Boolean): TModule;
+    function Compile(const SrcFile: string): TModule;
     function GetOpenArrayType(const typ: TType): TOpenArrayType;
     function GetUnitFile(const APasFile: string): String;
+    procedure GenCode(Func: TFunction);
     property OnError: TParserErrorEvent read FOnError write FOnError;
   end;
 
 implementation
 
-uses cupersist, parser, fileutils, llvmemit;
+uses cupersist, parser, fileutils, llvm_codegen, dump;
 
 { EParserError }
 
@@ -175,6 +298,24 @@ begin
   FFilename := AFilename;
   FRow := ARow;
   FColumn := AColumn;
+end;
+
+constructor EParserError.CreateCoord(const Coord: TAstNodeCoord;
+  const AReason: string);
+begin
+  inherited Create(AReason);
+  FFilename := Coord.FileName;
+  FRow := Coord.Row;
+  FColumn := Coord.Col;
+end;
+
+constructor EParserError.CreateCoordFmt(const Coord: TAstNodeCoord;
+  const AReason: string; const Args: array of const);
+begin
+  inherited CreateFmt(AReason, Args);
+  FFilename := Coord.FileName;
+  FRow := Coord.Row;
+  FColumn := Coord.Col;
 end;
 
 { TCompileContext }
@@ -223,29 +364,36 @@ begin
   M.Symbols.Add(CreateFunc('swap', bfSwap));
   M.Symbols.Add(CreateFunc('trunc', bfTrunc));
   M.Symbols.Add(CreateFunc('typeinfo', bfTypeInfo));
+  FNoopFunc := CreateFunc('$noop', bfNoop);
+  M.Symbols.Add(FNoopFunc);
 end;
 
 procedure TCompileContext.AddConstants(M: TModule);
 begin
   FFalseConst := TConstant(CreateAstNode(TConstant));
   FFalseConst.Name := 'False';
-  FFalseConst.ConstType := FTypes[typBoolean];
+  FFalseConst.ConstType := FBooleanType;
   FFalseConst.Value := ValFromBool(False);
   M.Symbols.Add(FFalseConst);
 
   FTrueConst := TConstant(CreateAstNode(TConstant));
   FTrueConst.Name := 'True';
-  FTrueConst.ConstType := FTypes[typBoolean];
+  FTrueConst.ConstType := FBooleanType;
   FTrueConst.Value := ValFromBool(True);
   M.Symbols.Add(FTrueConst);
+
+  FEmptySetVar := TVariable(CreateAstNode(TVariable));
+  FEmptySetVar.Name := '_EmptySet';
+  FEmptySetVar.VarType := FByteSetType;
+  M.Symbols.Add(FEmptySetVar);
 end;
 
 procedure TCompileContext.AddInternalTypes(M: TModule);
 
-  function CreateRangeType(BaseType: TTypeCode; const Name: string; R1, R2: Int64): TSubrangeType;
+  function CreateRangeType(BaseType: TType; const Name: string; R1, R2: Int64): TSubrangeType;
   begin
     Result := TSubrangeType(CreateAstNode(TSubrangeType));
-    Result.BaseType := FTypes[BaseType];
+    Result.BaseType := BaseType;
     Result.RangeBegin := R1;
     Result.RangeEnd := R2;
     Result.Name := Name;
@@ -263,17 +411,17 @@ procedure TCompileContext.AddInternalTypes(M: TModule);
   end;
 begin
 // Name是必须的
-  FShortintRangeType := CreateRangeType(typShortint, '$ShortintRange', -128, 127);
-  FSmallintRangeType := CreateRangeType(typSmallint, '$SmallintRange', -32768, 32767);
-  FLongintRangeType := CreateRangeType(typLongint, '$LongintRange', Longint($80000000), $7fffffff);
-  FInt64RangeType := CreateRangeType(typInt64, '$Int64Range', Int64($8000000000000000), $7fffffffffffffff);
-  FByteRangeType := CreateRangeType(typByte, '$ByteRange', 0, 255);
-  FWordRangeType := CreateRangeType(typWord, '$WordRange', 0, $ffff);
-  FLongWordRangeType := CreateRangeType(typLongWord, '$LongWordRange', 0, $ffffffff);
-  FUInt64RangeType := CreateRangeType(typUInt64, '$UInt64Range', 0, $ffffffffffffffff);
-  FCharRangeType := CreateRangeType(typAnsiChar, '$AnsiCharRange', 0, 255);
-  FWideCharRangeType := CreateRangeType(typWideChar, '$WideCharRange', 0, $ffff);
-  FBoolRangeType := CreateRangeType(typBoolean, '$BooleanRange', 0, 1);
+  FShortintRangeType := CreateRangeType(FShortIntType, '$ShortintRange', -128, 127);
+  FSmallintRangeType := CreateRangeType(FSmallIntType, '$SmallintRange', -32768, 32767);
+  FLongintRangeType := CreateRangeType(FLongIntType, '$LongintRange', Longint($80000000), $7fffffff);
+  FInt64RangeType := CreateRangeType(FInt64Type, '$Int64Range', Int64($8000000000000000), $7fffffffffffffff);
+  FByteRangeType := CreateRangeType(FByteType, '$ByteRange', 0, 255);
+  FWordRangeType := CreateRangeType(FWordType, '$WordRange', 0, $ffff);
+  FLongWordRangeType := CreateRangeType(FLongWordType, '$LongWordRange', 0, $ffffffff);
+  FUInt64RangeType := CreateRangeType(FUInt64Type, '$UInt64Range', 0, $ffffffffffffffff);
+  FCharRangeType := CreateRangeType(FAnsiCharType, '$AnsiCharRange', 0, 255);
+  FWideCharRangeType := CreateRangeType(FWideCharType, '$WideCharRange', 0, $ffff);
+  FBoolRangeType := CreateRangeType(FBooleanType, '$BooleanRange', 0, 1);
 
   FCharSetType := CreateSetType(FCharRangeType, '$CharSet');
   FByteSetType := CreateSetType(FByteRangeType, '$ByteSet');
@@ -286,6 +434,11 @@ begin
   FAnytype := TType(CreateAstNode(TUnresolvedType));
   FVarOpenArrayType := TOpenArrayType(CreateAstNode(TOpenArrayType));
   FVarOpenArrayType.ElementType := FUntype;
+end;
+
+procedure TCompileContext.AddNode(Node: TAstNode);
+begin
+  FNodes.Add(Node);
 end;
 
 procedure TCompileContext.AddPredefinedElements(M: TModule);
@@ -302,6 +455,72 @@ end;
 
 procedure TCompileContext.AddTypes(M: TModule);
 
+const
+  IntSizes: array[TIntKind] of Byte = (
+    1, 1, 2, 2, 4, 4, 8, 8
+  );
+  NumSizes: array[TNumericKind] of Byte = (
+    //numSingle, numDouble, numExtended, numCurrency, numComp, numReal48
+    4, 8, 10, 8, 8, 6
+  );
+  CharSizes: array[TCharKind] of Byte = (1, 2);
+  BoolSizes: array[TBoolKind] of Byte = (1, 1, 2, 4);
+
+  procedure CreateInt(var typ: TIntType; Kind: TIntKind; const Name: TSymString);
+  begin
+    typ := TIntType(CreateAstNode(TIntType));
+    typ.Kind := Kind;
+    typ.Name := Name;
+    typ.Size := IntSizes[Kind];
+    M.Add(typ);
+  end;
+
+  procedure CreateNum(var typ: TNumericType; Kind: TNumericKind; const Name: TSymString);
+  begin
+    typ := TNumericType(CreateAstNode(TNumericType));
+    typ.Kind := Kind;
+    typ.Name := Name;
+    typ.Size := NumSizes[Kind];
+    M.Add(typ);
+  end;
+
+  procedure CreateChar(var typ: TCharType; Kind: TCharKind; const Name: TSymString);
+  begin
+    typ := TCharType(CreateAstNode(TCharType));
+    typ.Kind := Kind;
+    typ.Name := Name;
+    typ.Size := CharSizes[Kind];
+    M.Add(typ);
+  end;
+
+  procedure CreateBool(var typ: TBoolType; Kind: TBoolKind; const Name: TSymString);
+  begin
+    typ := TBoolType(CreateAstNode(TBoolType));
+    typ.Kind := Kind;
+    typ.Name := Name;
+    typ.Size := BoolSizes[Kind];
+    M.Add(typ);
+  end;
+
+  function CreateStrType(const AName: TSymString; AKind: TStringKind; Size: Cardinal): TStringType;
+  begin
+    Result := TStringType.Create(AKind);
+    FNodes.Add(Result);
+    Result.Name := AName;
+    Result.Size := Size;
+    M.Add(Result);
+  end;
+
+  function CreateVariantType(const AName: string; AIsOle: Boolean): TVariantType;
+  begin
+    Result := TVariantType.Create;
+    Result.Name := AName;
+    Result.IsOle := AIsOle;
+    Result.Size := 16;
+    FNodes.Add(Result);
+    M.Add(Result);
+  end;
+
   function CreateType(size: Cardinal; code: TTypeCode;
       const name: string): TType; overload;
   begin
@@ -309,6 +528,7 @@ procedure TCompileContext.AddTypes(M: TModule);
     Result.Name := name;
     Result.Size := size;
     FNodes.Add(Result);
+    M.Add(Result);
   end;
 
   function CreateType(typ: TTypeClass; size: Cardinal;
@@ -318,84 +538,71 @@ procedure TCompileContext.AddTypes(M: TModule);
     Result.Name := name;
     Result.Size := size;
     FNodes.Add(Result);
+    M.Add(Result);
   end;
-const
-  typSizes: array[typShortint..typText] of Integer = (
-    // typShortint, typByte, typSmallint, typWord, typLongint, typLongWord, typInt64, typUInt64,
-    1, 1, 2, 2, 4, 4, 8, 8,
-    // typComp, typReal48, typSingle, typDouble, typExtended, typCurrency,
-    8, 6, 4, 8, 10, 8,
-    // typBoolean, typByteBool, typWordBool, typLongBool,
-    1, 1, 2, 4,
-    // typAnsiChar, typWideChar,
-    1, 2,
-    // typPointer, typPAnsiChar, typPWideChar,
-    4, 4, 4,
-    // typAnsiString, typWideString, typUnocodeString, typShortString,
-    4, 4, 4, 256, // shortstring max size is 256
-    // typVariant, typOleVariant,
-    16, 16,
-    // typFile, typText,
-    4, 4
-  );
-  typNames: array[typShortint..typText] of string = (
-    // typShortint, typByte, typSmallint, typWord, typLongint, typLongWord, typInt64, typUInt64,
-    'Shortint', 'Byte', 'Smallint', 'Word', 'Longint', 'LongWord', 'Int64', 'UInt64',
-    // typComp, typReal48, typSingle, typDouble, typExtended, typCurrency,
-    'Comp', 'Real48', 'Single', 'Double', 'Extended', 'Currency',
-    // typBoolean, typByteBool, typWordBool, typLongBool,
-    'Boolean', 'ByteBool', 'WordBool', 'LongBool',
-    // typAnsiChar, typWideChar,
-    'AnsiChar', 'WideChar',
-    // typPointer, typPAnsiChar, typPWideChar,
-    'Pointer', 'PAnsiChar', 'PWideChar',
-    // typAnsiString, typWideString, typUnicodeString, typShortString,
-    'AnsiString', 'WideString', 'UnicodeString', 'ShortString',
-    // typVariant, typOleVariant,
-    'Variant', 'OleVariant',
-    // typFile, typText,
-    'File', 'Text'
-  );
-var
-  T: TTypeCode;
+
 begin
-  for T := Low(FTypes) to High(FTypes) do
-  begin
-    if T in [typPointer, typFile, typAnsiString, typShortString] then Continue;
+  CreateInt(FShortIntType, intS8, 'Shortint');
+  CreateInt(FByteType, intU8, 'Byte');
+  CreateInt(FSmallIntType, intS16, 'Smallint');
+  CreateInt(FWordType, intU16, 'Word');
+  CreateInt(FLongIntType, intS32, 'Longint');
+  CreateInt(FLongWordType, intU32, 'LongWord');
+  CreateInt(FInt64Type, intS64, 'Int64');
+  CreateInt(FUInt64Type, intU64, 'UInt64');
 
-    FTypes[T] := CreateType(typSizes[T], T, typNames[T]);
-    M.Symbols.Add(FTypes[T]);
-  end;
+  CreateNum(FDoubleType, numDouble, 'Double');
+  CreateNum(FSingleType, numSingle, 'Single');
+  CreateNum(FCurrencyType, numCurrency, 'Currency');
+  CreateNum(FCompType, numComp, 'Comp');
+  CreateNum(FExtendedType, numExtended, 'Extended');
 
-  TPrimitiveType(FTypes[typVariant]).FAlign := 8;
-  TPrimitiveType(FTypes[typOleVariant]).FAlign := 8;
-  FTypes[typPointer] := CreateType(TPointerType, 4, 'Pointer');
-  FTypes[typFile] := CreateType(TFileType, 4, 'File');
-  FTypes[typAnsiString] := CreateType(TAnsiStringType, 4, 'AnsiString');
-  fTypes[typShortString] := CreateType(TShortStringType, 257, 'ShortString');
-  TShortStringType(FTypes[typShortString]).CharCount := 255;
-  M.Symbols.Add(FTypes[typPointer]);
-  M.Symbols.Add(FTypes[typFile]);
-  M.Symbols.Add(FTypes[typAnsiString]);
-  M.Symbols.Add(FTypes[typShortString]);
+  CreateChar(FAnsiCharType, charAnsi, 'AnsiChar');
+  CreateChar(FWideCharType, charWide, 'WideChar');
+
+  CreateBool(FBooleanType, bolStd, 'Boolean');
+  CreateBool(FByteBoolType, bolByte, 'ByteBool');
+  CreateBool(FWordBoolType, bolWord, 'WordBool');
+  CreateBool(FLongBoolType, bolLong, 'LongBool');
 
   // general types / alias
-  FIntegerType := CreateType(4, typLongint, 'Integer');
-  FCardinalType := CreateType(4, typLongWord, 'Cardinal');
-  FCharType := CreateType(1, typAnsiChar, 'Char');
-  FRealType := CreateType(8, typDouble, 'Real');
-  FStringType := CreateType(4, typAnsiString, 'String');
-  FPCharType := CreateType(4, typPAnsiChar, 'PChar');
-  FNativeIntType := CreateType(4, typLongint, 'NativeInt');
-  FNativeUIntType := CreateType(4, typLongWord, 'NativeUInt');
-  M.Symbols.Add(FIntegerType);
-  M.Symbols.Add(FCardinalType);
-  M.Symbols.Add(FCharType);
-  M.Symbols.Add(FRealType);
-  M.Symbols.Add(FStringType);
-  M.Symbols.Add(FPCharType);
-  M.Symbols.Add(FNativeIntType);
-  M.Symbols.Add(FNativeUIntType);
+  CreateInt(FIntegerType, intS32, 'Integer');
+  CreateInt(FCardinalType, intU32, 'Cardinal');
+  CreateChar(FCharType, charAnsi, 'Char');
+  CreateNum(FRealType, numDouble, 'Real');
+
+  if FPointerSize = 4 then
+  begin
+    CreateInt(FNativeIntType, intS32, 'NativeInt');
+    CreateInt(FNativeUIntType, intU32, 'NativeUInt');
+  end
+  else
+  begin
+    CreateInt(FNativeIntType, intS64, 'NativeInt');
+    CreateInt(FNativeUIntType, intU64, 'NativeUInt');
+  end;
+
+  FVariantType := CreateVariantType('Variant', False);
+  FOleVariantType := CreateVariantType('OleVariant', True);
+
+  FPAnsiCharType := CreateType(FPointerSize, typPAnsiChar, 'PAnsiChar');
+  FPWideCharType := CreateType(FPointerSize, typPWideChar, 'PWideChar');
+
+  FPointerType := CreateType(TPointerType, FPointerSize, 'Pointer');
+  FFileType := CreateType(TFileType, FPointerSize, 'File');
+
+  // String types
+  FAnsiStringType := CreateStrType('AnsiString', strAnsi, FPointerSize);
+  FWideStringType := CreateStrType('WideString', strWide, FPointerSize);
+  FUnicodeStringType := CreateStrType('UnicodeString', strUnicode, FPointerSize);
+  FShortStringType := CreateStrType('ShortString', strAShort, 256);
+  FShortStringType.Update;
+//  FShortStringType.CharCount := 255;
+
+  // general types / alias
+  FStringType := CreateStrType('String', strAnsi, FPointerSize);
+
+  FPCharType := CreateType(FPointerSize, typPAnsiChar, 'PChar');
 
 {  // for test
   FObjectType := TClassType(CreateAstNode(TClassType));
@@ -427,36 +634,48 @@ begin
   FPendingParsers.Clear;
 end;
 
-function TCompileContext.Compile(const SrcFile, UnitFile: string;
-  IsSys, DoGenCode: Boolean): TModule;
-
+function TCompileContext.Compile(const SrcFile: string): TModule;
+ {
   procedure GenCode(M: TModule);
   var
     cg: TCodeGen;
   begin
-    cg := TCodeGen.Create;
+    cg := TCodeGen.Create(Self);
     try
-      cg.EmitModule(M, Self);
+      cg.EmitModuleDecl(M);
       M.Codes := cg.GetIR;
     finally
       cg.Free;
     end;
   end;
 
+  procedure DoDumpAst(M: TModule);
+  var
+    d: TDump;
+  begin
+    d := TJsonDump.Create;
+    try
+      M.Dump := d.Dump(M, DumpAllOptions);
+    finally
+      d.Free;
+    end;
+  end;
+  }
 var
   Parser: TParser;
 begin
   parser := TParser.Create(Self);
   try
-    parser.FIsSystemUnit := IsSys;
+    parser.FIsSystemUnit := IsSystemUnit;
     parser.OpenFile(SrcFile);
     parser.OnError := Self.OnError;
     Result := parser.Parse;
     HasError := parser.ErrorCount > 0;
     if not HasError then
     begin
-      TCUWriter(FCUWriter).WriteModule(Result, UnitFile);
-      if DoGenCode then GenCode(Result);
+      TCUWriter(FCUWriter).WriteModule(Result, GetUnitFile(SrcFile));
+      //if DoGenCode then GenCode(Result);
+      //if DumpAst then DoDumpAst(Result);
     end;
   finally
     parser.Free;
@@ -465,6 +684,8 @@ end;
 
 constructor TCompileContext.Create;
 begin
+//  DefaultCodePage := GetThreadCodePage;
+  FPointerSize := 4;
   FNodes := TList.Create;
   FNodes.Capacity := 1024;
 
@@ -474,11 +695,22 @@ begin
   FOpenArrayTypes := TList.Create;
   FOpenArrayTypes.Capacity := 512;
 
+  FCachedUnary := TList.Create;
+  FCachedUnary.Capacity := 8;
+  FCachedBinary := TList.Create;
+  FCachedBinary.Capacity := 32;
+  FCachedList := TList.Create;
+  FCachedList.Capacity := 8;
+  FCachedConst := TList.Create;
+  FCachedConst.Capacity := 32;
+  FCachedSymbol := TList.Create;
+  FCachedSymbol.Capacity := 32;
+
   FModules := TSymbolTable.Create(nil);
   FCUReader := TCUReader.Create;
   FCUWriter := TCUWriter.Create;
-  IncludeDirs := TStringList.Create;
-  UnitDirs := TStringList.Create;
+  IncDirs := TStringList.Create;
+  LibDirs := TStringList.Create;
   FSystemUnit := TModule.Create;
   FSystemUnit.Name := 'System';
   AddPredefinedElements(FSystemUnit);
@@ -490,6 +722,31 @@ begin
   FNodes.Add(Result);
 end;
 
+function TCompileContext.GetCachedBinary: TBinaryExpr;
+begin
+  Result := TBinaryExpr(GetCachedExpr(FCachedBinary));
+end;
+
+function TCompileContext.GetCachedConst: TConstExpr;
+begin
+  Result := TConstExpr(GetCachedExpr(FCachedConst));
+end;
+
+function TCompileContext.GetCachedList: TListExpr;
+begin
+  Result := TListExpr(GetCachedExpr(FCachedList));
+end;
+
+function TCompileContext.GetCachedSymbol: TSymbolExpr;
+begin
+  Result := TSymbolExpr(GetCachedExpr(FCachedSymbol));
+end;
+
+function TCompileContext.GetCachedUnary: TUnaryExpr;
+begin
+  Result := TUnaryExpr(GetCachedExpr(FCachedUnary));
+end;
+
 function TCompileContext.CreateSymbol(SymClass: TSymbolClass): TSymbol;
 begin
   Result := SymClass.Create;
@@ -498,11 +755,17 @@ end;
 
 destructor TCompileContext.Destroy;
 begin
-  UnitDirs.Free;
-  IncludeDirs.Free;
+  LibDirs.Free;
+  IncDirs.Free;
   FSystemUnit.Free;
   ClearNodes;
   ClearParsers;
+
+  FCachedUnary.Free;
+  FCachedBinary.Free;
+  FCachedList.Free;
+  FCachedConst.Free;
+  FCachedSymbol.Free;
 
   FNodes.Free;
   FPendingParsers.Free;
@@ -511,6 +774,29 @@ begin
   FCUReader.Free;
   FCUWriter.Free;
   inherited;
+end;
+
+procedure TCompileContext.GenCode(Func: TFunction);
+var
+  cg: TCodeGen;
+begin
+  cg := TCodeGen.Create(Self);
+  try
+    cg.Emit(Func);
+  finally
+    cg.Free;
+  end;
+end;
+
+function TCompileContext.GetCachedExpr(List: TList): TExpr;
+begin
+  if List.Count > 0 then
+  begin
+    Result := TExpr(List.Last);
+    List.Delete(List.Count - 1);
+  end
+  else
+    Result := nil;
 end;
 
 function TCompileContext.GetOpenArrayType(
@@ -528,7 +814,6 @@ function TCompileContext.GetOpenArrayType(
     Result := nil;
   end;
 begin
-//  todo 1: 要考虑到非全局符号,不宜置于此处
   Result := Lookup(typ);
   if Result = nil then
   begin
@@ -540,20 +825,28 @@ begin
 end;
 
 function TCompileContext.GetSubrangeType(
-  Ordinal: TTypeCode): TSubrangeType;
+  Ordinal: TType): TSubrangeType;
 begin
-  case Ordinal of
-    typShortint:  Result := FShortintRangeType;
-    typByte:      Result := FByteRangeType;
-    typSmallint:  Result := FSmallintRangeType;
-    typWord:      Result := FWordRangeType;
-    typLongint:   Result := FLongintRangeType;
-    typLongWord:  Result := FLongWordRangeType;
-    typInt64:     Result := FInt64RangeType;
-    typUInt64:    Result := FUInt64RangeType;
-    typBoolean..typLongBool: Result := FBoolRangeType;
-    typAnsiChar:  Result := FCharRangeType;
-    typWideChar:  Result := FWideCharRangeType;
+  case Ordinal.TypeCode of
+    typInt:
+      case TIntType(Ordinal).Kind of
+        intS8:  Result := FShortintRangeType;
+        intU8:  Result := FByteRangeType;
+        intS16: Result := FSmallintRangeType;
+        intU16: Result := FWordRangeType;
+        intS32: Result := FLongintRangeType;
+        intU32: Result := FLongWordRangeType;
+        intS64: Result := FInt64RangeType;
+        intU64: Result := FUInt64RangeType;
+      else
+        Result := FLongintRangeType;
+      end;
+    typBool: Result := FBoolRangeType;
+    typChar:
+      if TCharType(Ordinal).Kind = charAnsi then
+        Result := FCharRangeType
+      else
+        Result := FWideCharRangeType;
   else
     Result := nil;
   end;
@@ -565,50 +858,124 @@ const
   FunStr: array[TSystemRoutine] of string = (
     '_IntOverflow', '_OutOfRange', '_IOCheck',
     '_RaiseExcept', '_SafecallCheck', '_HandleSafecallExcept',
-    '_HandleCtorExcept',
+    '_HandleCtorExcept', '_Terminated', '_HandleFinally',
+    '_Rethrow', '_IsClass', '_AsClass', 'FreeAndNil',
 
     '_Int64Div', '_Int64Mod', '_Round', '_Trunc',
 
     '_AStrClr', '_AStrAddRef', '_AStrNew', '_AStrPtr', '_AStrLength',
-    '_AStrComp', '_AStrEqual', '_AStrAsg', '_AStrAsgCopy', '_AStrSetLength',
-    '_AStrCopy', '_AStrDelete', '_AStrInsert', '_AStrFromSStr', '_AStrFromWStr',
+    '_AStrAsg', '_AStrAsgCopy', '_AStrSetLength', '_AStrCopy', '_AStrDelete',
+    '_AStrInsert', '_AStrFromSStr', '_AStrFromWStr',
     '_AStrFromUStr', '_AStrFromACh', '_AStrFromWCh', '_AStrFromPACh',
     '_AStrFromPAChLen', '_AStrFromPWCh', '_AStrFromPWChLen',
     '_AStrFromAArray', '_AStrFromWArray', '_AStrCat', '_AStrCat3', '_AStrCatN',
 
     '_WStrClr', '_WStrAddRef', '_WStrNew', '_WStrPtr', '_WStrLength',
-    '_WStrComp', '_WStrEqual', '_WStrAsg', '_WStrAsgCopy', '_WStrSetLength',
-    '_WStrCopy', '_WStrDelete', '_WStrInsert', '_WStrFromSStr', '_WStrFromAStr',
+    '_WStrAsg', '_WStrAsgCopy', '_WStrSetLength', '_WStrCopy', '_WStrDelete',
+    '_WStrInsert', '_WStrFromSStr', '_WStrFromAStr',
     '_WStrFromUStr', '_WStrFromACh', '_WStrFromWCh', '_WStrFromPACh',
     '_WStrFromPAChLen', '_WStrFromPWCh', '_WStrFromPWChLen',
     '_WStrFromAArray', '_WStrFromWArray', '_WStrCat', '_WStrCat3', '_WStrCatN',
 
     '_UStrClr', '_UStrAddRef', '_UStrNew', '_UStrPtr', '_UStrLength',
-    '_UStrComp', '_UStrEqual', '_UStrAsg', '_UStrAsgCopy', '_UStrSetLength',
-    '_UStrCopy', '_UStrDelete', '_UStrInsert', '_UStrFromSStr', '_UStrFromAStr',
+    '_UStrAsg', '_UStrAsgCopy', '_UStrSetLength', '_UStrCopy', '_UStrDelete',
+    '_UStrInsert', '_UStrFromSStr', '_UStrFromAStr',
     '_UStrFromWStr', '_UStrFromACh', '_UStrFromWCh', '_UStrFromPACh',
     '_UStrFromPAChLen', '_UStrFromPWCh', '_UStrFromPWChLen',
     '_UStrFromAArray', '_UStrFromWArray', '_UStrCat', '_UStrCat3', '_UStrCatN',
 
-    '_SStrComp', '_SStrEqual', '_SStrAsg',
-    '_SStrCopy', '_SStrDelete', '_SStrInsert', '_SStrFromAStr', '_SStrFromWStr',
-    '_SStrFromUStr', '_SStrFromACh', '_SStrFromWCh', '_SStrFromPACh',
-    '_SStrFromPAChLen', '_SStrFromPWCh', '_SStrFromPWChLen',
-    '_SStrFromAArray', '_SStrFromWArray', '_SStrCat', '_SStrCat3', '_SStrCatN',
+    '_SStrClr', '_SStrLength', '_SStrAsg', '_SStrCopy', '_SStrSetLength',
+    '_SStrDelete', '_SStrInsert',
+    '_SStrFromAStr', '_SStrFromWStr', '_SStrFromUStr', '_SStrFromACh',
+    '_SStrFromWCh', '_SStrFromPACh', '_SStrFromPAChLen', '_SStrFromPWCh',
+    '_SStrFromPWChLen', '_SStrFromAArray', '_SStrFromWArray', '_SStrCat',
+    '_SStrCat3', '_SStrCatN',
 
-    '_VarClr', '_VarAddRef', '_VarOp', '_VarNot', '_VarNeg', '_VarCopy',
+    '_SWStrClr', '_SWStrLength', '_SWStrAsg', '_SWStrCopy', '_SWStrSetLength',
+    '_SWStrDelete', '_SWStrInsert',
+    '_SWStrFromAStr', '_SWStrFromWStr', '_SWStrFromUStr', '_SWStrFromACh',
+    '_SWStrFromWCh', '_SWStrFromPACh', '_SWStrFromPAChLen', '_SWStrFromPWCh',
+    '_SWStrFromPWChLen', '_SWStrFromAArray', '_SWStrFromWArray', '_SWStrCat',
+    '_SWStrCat3', '_SWStrCatN',
+
+    '_AStrComp', '_WStrComp', '_UStrComp', '_SStrComp', '_SWStrComp',
+    '_AArrComp', '_WArrComp',
+
+    '_AStrCompWStr', '_AStrCompUStr', '_AStrCompSStr', '_AStrCompSWStr',
+    '_AStrCompPa', '_AStrCompPw', '_AStrCompAarr', '_AStrCompWarr',
+    '_AStrCompACh', '_AStrCompWCh',
+
+    '_WStrCompAStr', '_WStrCompUStr', '_WStrCompSStr', '_WStrCompSWStr',
+    '_WStrCompPa', '_WStrCompPw', '_WStrCompAarr', '_WStrCompWarr',
+    '_WStrCompACh', '_WStrCompWCh',
+
+    '_UStrCompAStr', '_UStrCompWStr', '_UStrCompSStr', '_UStrCompSWStr',
+    '_UStrCompPa', '_UStrCompPw', '_UStrCompAarr', '_UStrCompWarr',
+    '_UStrCompACh', '_UStrCompWCh',
+
+    '_SStrCompAStr', '_SStrCompWStr', '_SStrCompUStr', '_SStrCompSWStr',
+    '_SStrCompPa', '_SStrCompPw', '_SStrCompAarr', '_SStrCompWarr',
+    '_SStrCompACh', '_SStrCompWCh',
+
+    '_SWStrCompAStr', '_SWStrCompWStr', '_SWStrCompUStr', '_SWStrCompSStr',
+    '_SWStrCompPa', '_SWStrCompPw', '_SWStrCompAarr', '_SWStrCompWarr',
+    '_SWStrCompACh', '_SWStrCompWCh',
+
+    '_PaCompAStr', '_PaCompWStr', '_PaCompUStr', '_PaCompSStr',
+    '_PaCompSWStr', '_PaCompAarr', '_PaCompWarr', '_PaCompACh', '_PaCompWCh',
+
+    '_PwCompAStr', '_PwCompWStr', '_PwCompUStr', '_PwCompSStr',
+    '_PwCompSWStr', '_PwCompAarr', '_PwCompWarr', '_PwCompACh', '_PwCompWCh',
+
+    '_AarrCompAStr', '_AarrCompWStr', '_AarrCompUStr', '_AarrCompSStr',
+    '_AarrCompSWStr', '_AarrCompPa', '_AarrCompPw', '_AarrCompWarr',
+    '_AarrCompACh', '_AarrCompWCh',
+
+    '_WarrCompAStr', '_WarrCompWStr', '_WarrCompUStr', '_WarrCompSStr',
+    '_WarrCompSWStr', '_WarrCompPa', '_WarrCompPw', '_WarrCompAarr',
+    '_WarrCompACh', '_WarrCompWCh',
+
+    '_AChCompAStr', '_AChCompWStr', '_AChCompUStr', '_AChCompSStr',
+    '_AChCompSWStr', '_AChCompPa', '_AChCompPw', '_AChCompAarr',
+    '_AChCompWarr',
+
+    '_WChCompAStr', '_WChCompWStr', '_WChCompUStr', '_WChCompSStr',
+    '_WChCompSWStr', '_WChCompPa', '_WChCompPw', '_WChCompAarr',
+    '_WChCompWarr',
+
+    '_VarClr', '_VarAddRef', '_VarOp', '_VarNot', '_VarNeg', '_VarComp',
+    '_VarCopy', '_VarArrayGet', '_VarArraySet',
+    '_VarFromShortint', '_VarFromByte', '_VarFromSmallint', '_VarFromWord',
+    '_VarFromLongint', '_VarFromLongWord', '_VarFromInt64', '_VarFromUInt64',
+    '_VarFromAChr', '_VarFromWChr',
+    '_VarFromReal', '_VarFromBool', '_VarFromDateTime', '_VarFromCurr',
+    '_VarFromPAChr', '_VarFromPWChr', '_VarFromAStr',
+    '_VarFromWStr', '_VarFromUStr', '_VarFromSStr', '_VarFromSWStr',
+    '_VarFromIntf', '_VarFromDisp', '_VarFromDynArr',
+
     '_Var2AStr', '_Var2WStr', '_Var2UStr', '_Var2SStr',
     '_Var2Shortint', '_Var2Byte', '_Var2Smallint', '_Var2Word',
     '_Var2Longint', '_Var2LongWord', '_Var2Int64', '_Var2UInt64',
     '_Var2Single', '_Var2Double', '_Var2Currency', '_Var2DateTime',
+    '_Var2Intf', '_Var2Disp', '_Var2DynArr',
 
-    '_RecordClr', '_RecordInit', '_RecordAddRef',
+    '_OleVarFromPAChr', '_OleVarFromPWChr', '_OleVarFromAStr',
+    '_OleVarFromWStr', '_OleVarFromUStr', '_OleVarFromSStr',
+    '_OleVarFromVar', '_OleVarFromInt',
 
-    '_ArrayClr', '_ArrayInit', '_ArrayAddRef',
+    '_RecordClr', '_RecordInit', '_RecordAddRef', '_RecordCopy',
 
-    '_IntfClr', '_IntfAddRef',
+    '_ArrayClr', '_ArrayInit', '_ArrayAddRef', '_ArrayCopy',
 
-    '_DynArrayClr', '_DynArrayAddRef'
+    '_IntfClr', '_IntfAddRef', '_IntfCopy', '_IntfCast',
+
+    '_DynArrayClr', '_DynArrayAddRef', '_DynArrayAsg',
+
+    '_SetIn', '_SetUnion', '_SetSub', '_SetInterset', '_SetRange', '_SetElem',
+    '_SetNE', '_SetEQ', '_SetLE', '_SetGE', '_SetInclude', '_SetExclude',
+    '_SetCopy', '_SetInflate', '_SetExpand',
+    '_NSetIn', '_NSetUnion', '_NSetSub', '_NSetInterset', '_NSetRange', '_NSetElem',
+    '_NSetNE', '_NSetEQ', '_NSetLE', '_NSetGE', '_NSetInclude', '_NSetExclude'
   );
 var
   Sym: TSymbol;
@@ -617,7 +984,7 @@ begin
   if Result = nil then
   begin
     Sym := FSystemUnit.FindSymbol(FunStr[Routine]);
-    if Assigned(Sym) and (Sym.NodeKind = nkFunc) then
+    if Assigned(Sym) and (Sym.NodeKind in [nkFunc, nkExternalFunc]) then
       Result := TFunction(Sym)
     else
       raise ECompileContextError.CreateFmt('System routine %s not found', [FunStr[Routine]]);
@@ -659,13 +1026,29 @@ procedure TCompileContext.LoadSystemUnit;
         raise ECompileContextError.CreateFmt('Invalid type: %s', [s]);
   end;
 
+  function GetSystemUnit: string;
+  var
+    i: Integer;
+  begin
+    for i := 0 to LibDirs.Count-1 do
+    begin
+      Result := LibDirs[i] + 'system.cu';
+      if FileExists(Result) then Exit;
+    end;
+    Result := '';
+  end;
+
 var
   Reader: TCUReader;
+  fn: string;
 begin
   if FSystemLoaded then Exit;
   reader := TCUReader.Create;
   try
-    reader.Open('system.cu');
+    fn := GetSystemUnit;
+    if fn = '' then
+      raise ECompileContextError.Create('system.cu not found');
+    reader.Open(fn);
     reader.ReadModule(FSystemUnit, Self);
     Self.FTObjectType := TClassType(GetSymbol('TObject', nkType, typClass));
     Self.FIUnknownType := TInterfaceType(GetSymbol('IInterface', nkType, typInterface));
@@ -687,9 +1070,9 @@ function TCompileContext.LoadUnit(const UnitName: string): TModule;
   var
     I: Integer;
   begin
-    for I := 0 to UnitDirs.Count - 1 do
+    for I := 0 to LibDirs.Count - 1 do
     begin
-      Result := UnitDirs[I] + LowerCase(UnitName) + Ext;
+      Result := LibDirs[I] + LowerCase(UnitName) + Ext;
       if FileExists(Result) then Exit;
     end;
     Result := '';
@@ -795,6 +1178,64 @@ begin
   end;
 end;
 
+procedure TCompileContext.ReleaseExpr(E: TExpr);
+
+  function KindOf(E: TExpr): TExprOpKind;
+  begin
+    if E is TUnaryExpr then
+      Result := opkUnary
+    else if E is TBinaryExpr then
+      Result := opkBinary
+    else if E is TSymbolExpr then
+      Result := opkSymbol
+    else if E is TListExpr then
+      Result := opkList
+    else if E is TConstExpr then
+      Result := opkConst
+  end;
+var
+  kind: TExprOpKind;
+begin
+  if E = nil then Exit;
+
+  kind := OpKinds[E.OpCode];
+  if kind = opkNone then kind := KindOf(E);
+  case kind of
+    opkUnary: FCachedUnary.Add(E);
+    opkBinary: FCachedBinary.Add(E);
+    opkConst: FCachedConst.Add(E);
+    opkSymbol: FCachedSymbol.Add(E);
+    opkList: FCachedList.Add(E);
+  end;
+
+  E.Reset;
+end;
+
+procedure TCompileContext.ResolveSystemSymbols;
+
+  function GetSymbol(const s: string;
+                      ExpectKind: TAstNodeKind;
+                      ExpectType: TTypeCode): TSymbol;
+  begin
+    Result := FSystemUnit.FindSymbol(s);
+    if Result = nil then
+      raise ECompileContextError.CreateFmt('Identifier %s not found in system unit', [s]);
+    if ExpectKind <> nkSymbol then
+      if Result.NodeKind <> ExpectKind then
+        raise ECompileContextError.CreateFmt('Invalid symbol: %s', [s]);
+    if ExpectType <> typUnknown then
+      if TType(Result).TypeCode <> ExpectType then
+        raise ECompileContextError.CreateFmt('Invalid type: %s', [s]);
+  end;
+begin
+  if Self.FVarDataType = nil then
+    Self.FVarDataType := TType(GetSymbol('TVarData', nkType, typRecord));
+  if Self.FVarRecType = nil then
+    Self.FVarRecType := TType(GetSymbol('TVarRec', nkType, typRecord));
+  if Self.FDateTimeType = nil then
+    Self.FDateTimeType := TType(GetSymbol('TDateTime', nkType, typClonedType));
+end;
+
 function TCompileContext.TypeOfRange(r1, r2: Int64): TType;
 var
   Size1, Size2: Integer;
@@ -821,28 +1262,28 @@ begin
     if Size2 < Size1 then Size2 := Size1;
 
     case Size2 of
-      8: Result := FTypes[typInt64];
-      4: Result := FTypes[typLongint];
-      2: Result := FTypes[typSmallint];
+      8: Result := FInt64Type;
+      4: Result := FLongIntType;
+      2: Result := FSmallIntType;
     else
-      Result := FTypes[typShortint];
+      Result := FLongIntType;
     end;
   end else
   begin
     if r2 > $ffffffff then
-      Result := FTypes[typInt64]
+      Result := FInt64Type
     else if r2 > $7fffffff then
-      Result := FTypes[typLongWord]
+      Result := FLongWordType
     else if r2 > $ffff then
-      Result := FTypes[typLongint]
+      Result := FLongIntType
     else if r2 > $7fff then
-      Result := FTypes[typWord]
+      Result := FWordType
     else if r2 > $ff then
-      Result := FTypes[typSmallint]
+      Result := FSmallIntType
     else if r2 > $7f then
-      Result := FTypes[typByte]
+      Result := FByteType
     else
-      Result := FTypes[typShortint]
+      Result := FShortIntType
   end;
 end;
 

@@ -1,0 +1,130 @@
+object MainFrm: TMainFrm
+  Left = 374
+  Height = 460
+  Top = 125
+  Width = 736
+  Caption = 'Tester'
+  ClientHeight = 460
+  ClientWidth = 736
+  OnClose = FormClose
+  OnCreate = FormCreate
+  Position = poDesktopCenter
+  LCLVersion = '1.2.6.0'
+  object Panel1: TPanel
+    Left = 0
+    Height = 64
+    Top = 0
+    Width = 736
+    Align = alTop
+    BevelOuter = bvNone
+    ClientHeight = 64
+    ClientWidth = 736
+    TabOrder = 0
+    object Label1: TLabel
+      Left = 9
+      Height = 12
+      Top = 11
+      Width = 42
+      Caption = 'Folder:'
+      ParentColor = False
+    end
+    object edtDir: TEdit
+      Left = 60
+      Height = 25
+      Top = 8
+      Width = 292
+      TabOrder = 0
+      Text = 'E:\MyData\Work\llvmpas\bin\test\a1.pas'
+    end
+    object btnRun: TButton
+      Left = 400
+      Height = 34
+      Top = 8
+      Width = 75
+      Caption = 'Run'
+      OnClick = btnRunClick
+      TabOrder = 1
+    end
+    object btnClose: TButton
+      Left = 560
+      Height = 34
+      Top = 8
+      Width = 75
+      Caption = 'Close'
+      OnClick = btnCloseClick
+      TabOrder = 2
+    end
+    object cbItems: TComboBox
+      Left = 60
+      Height = 25
+      Top = 34
+      Width = 292
+      ItemHeight = 17
+      ItemIndex = 0
+      Items.Strings = (
+        'All'
+        'aa'
+        'bb'
+        'cc'
+        'dd'
+      )
+      Style = csDropDownList
+      TabOrder = 3
+      Text = 'All'
+    end
+    object btnOpenDir: TSpeedButton
+      Left = 360
+      Height = 22
+      Top = 11
+      Width = 23
+      Caption = '...'
+      Font.CharSet = ANSI_CHARSET
+      Font.Color = clBlack
+      Font.Height = -16
+      Font.Name = 'Tahoma'
+      Font.Pitch = fpVariable
+      Font.Quality = fqDraft
+      Font.Style = [fsBold]
+      OnClick = btnOpenDirClick
+      ParentFont = False
+    end
+    object btnStop: TButton
+      Left = 480
+      Height = 34
+      Top = 8
+      Width = 75
+      Caption = 'Stop'
+      Enabled = False
+      OnClick = btnStopClick
+      TabOrder = 4
+    end
+  end
+  object grd1: TStringGrid
+    Left = 0
+    Height = 396
+    Top = 64
+    Width = 736
+    Align = alClient
+    ColCount = 3
+    Columns = <    
+      item
+        Title.Caption = 'Item'
+        Width = 110
+      end    
+      item
+        Title.Caption = 'Result'
+        Width = 300
+      end    
+      item
+        ButtonStyle = cbsEllipsis
+        Title.Caption = 'Output'
+        Width = 300
+      end>
+    FixedCols = 0
+    Options = [goFixedVertLine, goFixedHorzLine, goVertLine, goHorzLine, goRangeSelect, goColSizing, goSmoothScroll]
+    RowCount = 1
+    TabOrder = 1
+    TitleStyle = tsNative
+    OnDblClick = grd1DblClick
+  end
+end

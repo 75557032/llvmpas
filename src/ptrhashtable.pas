@@ -225,7 +225,7 @@ var
   i: Integer;
 begin
   for i := 0 to FCount - 1 do
-    if FItems[i] = Value then
+    if PPtrHashItem(FItems[i]).Value = Value then
     begin
       Result := i;
       Exit;

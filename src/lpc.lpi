@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
     <Version Value="9"/>
@@ -29,9 +29,10 @@
     <RunParams>
       <local>
         <FormatVersion Value="1"/>
+        <CommandLineParams Value="-c ..\test\methptr001.pas"/>
       </local>
     </RunParams>
-    <Units Count="11">
+    <Units Count="15">
       <Unit0>
         <Filename Value="lpc.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -68,42 +69,56 @@
         <UnitName Value="lex"/>
       </Unit6>
       <Unit7>
-        <Filename Value="llvmemit.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="llvmemit"/>
-      </Unit7>
-      <Unit8>
         <Filename Value="parser.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="parser"/>
-      </Unit8>
-      <Unit9>
+      </Unit7>
+      <Unit8>
         <Filename Value="start.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="start"/>
-      </Unit9>
-      <Unit10>
+      </Unit8>
+      <Unit9>
         <Filename Value="fileutils.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="fileutils"/>
+      </Unit9>
+      <Unit10>
+        <Filename Value="hashtable.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="hashtable"/>
       </Unit10>
+      <Unit11>
+        <Filename Value="func.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="func"/>
+      </Unit11>
+      <Unit12>
+        <Filename Value="dump.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="dump"/>
+      </Unit12>
+      <Unit13>
+        <Filename Value="llvm_codegen.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="llvm_codegen"/>
+      </Unit13>
+      <Unit14>
+        <Filename Value="llvm_codepack.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="llvm_codepack"/>
+      </Unit14>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
     <Version Value="11"/>
-    <PathDelim Value="/"/>
     <Target>
-      <Filename Value="../bin/lpc"/>
+      <Filename Value="../release/bin/lpc"/>
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <UnitOutputDirectory Value="../lib\$(TargetCPU)-$(TargetOS)"/>
+      <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
-    <Linking>
-      <Debugging>
-        <UseExternalDbgSyms Value="True"/>
-      </Debugging>
-    </Linking>
     <Other>
       <CompilerMessages>
         <IgnoredMessages idx5024="True" idx5028="True"/>

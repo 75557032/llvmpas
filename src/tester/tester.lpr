@@ -1,15 +1,14 @@
-program lpcw;
+program tester;
 
 {$mode objfpc}{$H+}
-{$warn 5023 off}
 
 uses
   {$IFDEF UNIX}{$IFDEF UseCThreads}
   cthreads,
   {$ENDIF}{$ENDIF}
   Interfaces, // this includes the LCL widgetset
-  Forms, Main, ast, cntx, cupersist, err, fileutils,
-  func, hashtable, lex, parser, inst, llvm_codegen, llvm_codepack, dump;
+  Forms, runtimetypeinfocontrols, main, run, memodlg
+  { you can add units after this };
 
 {$R *.res}
 

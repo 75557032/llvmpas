@@ -210,7 +210,8 @@ varargs, virtual, write, writeonly,
   TTextFormat = (tfAnsi, tfUnicode, tfUnicodeBigEndian, tfUtf8);
 
   TLineReader = class
-  private
+  protected
+    FIsUtf8: Boolean;
     function GetCurLine: PChar; virtual; abstract;
   public
     // 是否已经结束?
@@ -219,6 +220,8 @@ varargs, virtual, write, writeonly,
     procedure ReadLine; virtual; abstract;
     // 以#0结束的字符串
     property CurLine: PChar read GetCurLine;
+    // 内容是否utf8编码
+    property IsUtf8: Boolean read FIsUtf8;
   end;
 
   { TFileLineReader }
@@ -244,6 +247,7 @@ varargs, virtual, write, writeonly,
     procedure AddStr(P: PAnsiChar; Len: Integer);
     procedure ClearStr;
     function ConcatStr(Last: PAnsiChar; Size: Integer): AnsiString;
+  protected
     function GetCurLine: PAnsiChar; override;
   public
     constructor Create(const AFileName: string);
@@ -274,6 +278,7 @@ varargs, virtual, write, writeonly,
     FIndex: Integer;
     FCurLine: string;
     FEof: Boolean;
+  protected
     function GetCurLine: PChar; override;
   public
     constructor Create(const S: string);
@@ -326,6 +331,8 @@ varargs, virtual, write, writeonly,
     FCurTokenString: string;
     FCurLine: PChar;
     FBuffer: PChar;
+    FTokenStartRow: Integer;
+    FTokenStart: PChar;
     FIncludeStack: TList;
     FOnError: TScannerErrorEvent;
     FShortSwitches: TShortSwitchList;
@@ -343,6 +350,7 @@ varargs, virtual, write, writeonly,
     FOnIfEval: TIfEvalEvent;
     FOnIfOpt: TIfOptEvent;
 
+    function GetTokenStartCol: Integer;
     function OpenLineReader(const FileName: string): TLineReader;
     function GetCurColumn: Integer;
     procedure PushFile;
@@ -407,8 +415,8 @@ varargs, virtual, write, writeonly,
     property CurLine: PChar read FCurLine;
     property CurRow: Integer read FCurRow;
     property CurColumn: Integer read GetCurColumn;
-//    property TokenStartRow: Integer read FTokenStartRow;
-//    property TokenStartCol: Integer read GetTokenStartCol;
+    property TokenStartRow: Integer read FTokenStartRow;
+    property TokenStartCol: Integer read GetTokenStartCol;
 
     property CurToken: TToken read FCurToken;
     property CurTokenString: string read FCurTokenString;
@@ -991,6 +999,8 @@ begin
     Inc(FContent, 2);
 //  FRowNo := 1;
   FEof := False;
+  // utf16最终也要转成utf8传给Parser
+  FIsUtf8 := fTextFormat in [tfUtf8, tfUnicode, tfUnicodeBigEndian];
 end;
 
 destructor TFileLineReader.Destroy;
@@ -1512,7 +1522,10 @@ begin
 
   FCurTokenString := '';
   Result := tkEof;
+
 FetchStart:
+  FTokenStart := FCurLine;
+  FTokenStartRow := FCurRow;
   case FCurLine[0] of
     #0:         // Empty line
       begin
@@ -1945,6 +1958,11 @@ begin
   Result := FCurLine - FBuffer;
 end;
 
+function TScanner.GetTokenStartCol: Integer;
+begin
+  Result := FTokenStart - FBuffer;
+end;
+
 procedure TScanner.Open(const S: string);
 begin
   FCurSourceFile := TStringLineReader.Create(S);
@@ -2054,12 +2072,12 @@ function TScanner.ReadDirective(var DInfo: TDirectiveInfo): Boolean;
   end;
 
 const
-  DStr: array[0..25] of string = (
+  DStr: array[0..26] of string = (
     'ALIGN', 'APPTYPE', 'BOOLEVAL', 'DEFINE',
     'ELSE', 'ELSEIF', 'ENDIF', 'EXTERNALSYM',
     'HPPEMIT',
     'IF', 'IFDEF', 'IFEND', 'IFNDEF', 'IFOPT', 'INCLUDE', 'IOCHECKS',
-    'MINENUMSIZE',
+    'MINENUMSIZE', 'MODE',
     'NODEFINE',
     'OVERFLOWCHECKS',
     'RANGECHECKS', 'RESOURCE',
@@ -2068,12 +2086,12 @@ const
     'WRITEABLECONST'
   );
 
-  Directives: array[0..25] of TCompilerDirective = (
+  Directives: array[0..26] of TCompilerDirective = (
     cdAlign, cdAppType, cdBoolEval, cdDefine,
     cdElse, cdElseIf, cdEndIf, cdExternalSym,
     cdHPPEmit,
     cdIf, cdIfDef, cdIfEnd, cdIfNDef, cdIfOpt, cdInclude, cdIOChecks,
-    cdMinEnumSize,
+    cdMinEnumSize, cdMode,
     cdNoDefine,
     cdOverflowChecks,
     cdRangeChecks, cdResource,
@@ -2358,6 +2376,13 @@ DoScan:
       cdNoDefine, cdHPPEmit, cdExternalSym:
         begin
         end;
+
+      cdMode:
+        begin
+          DInfo.ArgStr1 := GetIdent;
+          if DInfo.ArgStr1 = '' then
+            Error(SErrInvalidDirectiveParam, True);
+        end
     else
       Assert(False);
     end;

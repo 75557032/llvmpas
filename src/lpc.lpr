@@ -7,10 +7,10 @@ uses
   cthreads,
   {$ENDIF}{$ENDIF}
   Classes, SysUtils, ast, ptrhashtable, cntx, cupersist, err, lex,
-  llvmemit, parser, start, fileutils
+  parser, start, fileutils, func, hashtable, dump, llvm_codegen, llvm_codepack
   { you can add units after this };
 
 begin
-
+  StartCompile;
 end.
 

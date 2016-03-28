@@ -107,7 +107,7 @@ type
 implementation
 
 type
-  TByteData = array[0..10] of Byte;
+  TByteData = array[0..20] of Byte;
   PByteData = ^TByteData;
 
 procedure EncodeUInt32(value: Cardinal; out buf: TByteData; out len: Integer);
@@ -166,7 +166,7 @@ begin
   if Value < 0 then
   begin
     endVal := -1;
-    signExt := $7e00000000000000;
+    signExt := $fe00000000000000; // $7e00000000000000;
   end
   else
   begin
@@ -242,6 +242,12 @@ public static void writeUnsignedLeb128(ByteOutput out, int value) {
         }
     }*)
 
+type
+  TOvrldSym = class(TSymbol)
+  public
+    ID: Integer;
+  end;
+
 { TCUWriter }
 
 constructor TCUWriter.Create;
@@ -280,13 +286,13 @@ procedure TCUWriter.GetAllExternalSymbols(M: TModule);
 
   procedure DoAdd(sym: TSymbol);
 
-    procedure DoAddArgs(List: TList);
+    procedure DoAddArgs(List: TFuncParamList);
     var
       i: Integer;
     begin
       if List = nil then Exit;
       for i := 0 to List.Count - 1 do
-        Add(TArgument(List[i]).ArgType);
+        Add(List[i].ParamType);
     end;
 
     procedure DoAddFunc(Func: TFunctionDecl);
@@ -294,7 +300,7 @@ procedure TCUWriter.GetAllExternalSymbols(M: TModule);
       while Func <> nil do
       begin
         Add(Func.ReturnType);
-        DoAddArgs(Func.Args);
+        DoAddArgs(Func.Params);
         Func := Func.NextOverload;
       end;
     end;
@@ -305,11 +311,8 @@ procedure TCUWriter.GetAllExternalSymbols(M: TModule);
     begin
       Add(Typ.Base);
 
-      if Typ.Interfaces <> nil then
-      begin
-        for i := 0 to Typ.Interfaces.Count - 1 do
-          Add(TInterfaceType(Typ.Interfaces[i]));
-      end;
+      for i := 0 to Typ.InterfaceCount - 1 do
+        Add(Typ.Interfaces[i]);
 
       for i := 0 to Typ.Symbols.Count - 1 do
         DoAdd(Typ.Symbols[i]);
@@ -354,7 +357,7 @@ procedure TCUWriter.GetAllExternalSymbols(M: TModule);
           end;
           typProcedural: begin
               Add(TProceduralType(sym).ReturnType);
-              DoAddArgs(TProceduralType(sym).Args);
+              DoAddArgs(TProceduralType(sym).Params);
             end;
           typClassRef: Add(TClassRefType(sym).RefType);
           typSubrange: Add(TSubrangeType(sym).BaseType);
@@ -372,7 +375,7 @@ procedure TCUWriter.GetAllExternalSymbols(M: TModule);
             DoAddClass(TClassType(sym));
           typObject:
             DoAddObject(TObjectType(sym));
-          typInterface, typDispInterface:
+          typInterface:
             DoAddIntf(TInterfaceType(sym));
           typRecord:
             DoAddRecord(TRecordType(sym));
@@ -384,8 +387,8 @@ procedure TCUWriter.GetAllExternalSymbols(M: TModule);
         Add(TVariable(sym).VarType);
         Add(TVariable(sym).AbsVar);
       end;
-      nkArgument:
-        Add(TArgument(sym).ArgType);
+      nkFuncParam:
+        Add(TFuncParam(sym).ParamType);
       nkConstant: begin
         DoAdd(TConstant(sym).ConstType);
         Add(TConstant(sym).ConstType);
@@ -396,11 +399,11 @@ procedure TCUWriter.GetAllExternalSymbols(M: TModule);
       end;
       nkProperty: begin
           Add(TProperty(sym).PropType);
-          DoAddArgs(TProperty(sym).Args);
+          DoAddArgs(TProperty(sym).Params);
         end;
       nkIntfProperty: begin
           Add(TIntfProperty(sym).PropType);
-          DoAddArgs(TIntfProperty(sym).Args);
+          DoAddArgs(TIntfProperty(sym).Params);
         end;
       nkMethod, nkFunc, nkExternalFunc: DoAddFunc(TFunctionDecl(sym));
     end;
@@ -418,7 +421,7 @@ procedure TCUWriter.GetAllExternalSymbols(M: TModule);
         case TType(sym).TypeCode of
           typClass: symbols := TClassType(sym).Symbols;
           typObject: symbols := TObjectType(sym).Symbols;
-          typInterface, typDispInterface: symbols := TInterfaceType(sym).Symbols;
+          typInterface: symbols := TInterfaceType(sym).Symbols;
           typRecord: symbols := TRecordType(sym).Symbols;
         end;
       nkFunc, nkMethod: symbols := TFunction(sym).LocalSymbols;
@@ -602,7 +605,7 @@ const
   't', 'N', 'M', 'v', 'c',
   // nkField, nkProperty, nkIntfProperty, nkMethod, nkMethodResolution,
   'f', 'p', 'P', 'm', 'r',
-  // nkArgument, nkEnumElement, nkFunc, nkExternalFunc, nkBuiltinFunc,
+  // nkFuncParam, nkEnumElement, nkFunc, nkExternalFunc, nkBuiltinFunc,
   'a', 'e', 'F', 'x', 'u',
   // nkAccessor
   'A'
@@ -616,22 +619,22 @@ const
     WriteUInt32(Byte(V.Attr));
   end;
 
-  procedure WriteArg(V: TArgument);
+  procedure WriteArg(V: TFuncParam);
   begin
     WriteId(V.Name);
     WriteByte(Ord(V.ArgKind));
     if V.ArgKind = akNormal then
-      WriteRef(V.ArgType)
+      WriteRef(V.ParamType)
     else if V.ArgKind = akArrayOfType then
-      WriteRef(TOpenArrayType(V.ArgType).ElementType);
+      WriteRef(TOpenArrayType(V.ParamType).ElementType);
 //    if V.ArgKind in [akNormal, akArrayOfType] then
-//      WriteRef(V.ArgType);
+//      WriteRef(V.ParamType);
     WriteValue(V.DefaultValue);
     WriteUInt32(Byte(V.Modifier));
 //    WriteBool(V.IsOpenArray);
   end;
 
-  procedure WriteArgs(List: TList);
+  procedure WriteArgs(List: TFuncParamList);
   var
     i: Integer;
   begin
@@ -639,7 +642,7 @@ const
     begin
       WriteUInt32(List.Count);
       for i := 0 to List.Count - 1 do
-        WriteArg(TArgument(List[i]));
+        WriteArg(List[i]);
     end
     else
       WriteUInt32(0);
@@ -680,7 +683,7 @@ const
     WriteRef(Sym.Setter);
     WriteRef(Sym.Stored);
     WriteSInt32(Sym.Index);
-    WriteArgs(Sym.Args);
+    WriteArgs(Sym.Params);
   end;
 
   procedure WriteIntfProp(Sym: TIntfProperty);
@@ -690,7 +693,13 @@ const
     WriteSymbol(Sym.Getter);
     WriteSymbol(Sym.Setter);
     WriteSInt32(Sym.DispID);
-    WriteArgs(Sym.Args);
+    WriteArgs(Sym.Params);
+  end;
+
+  procedure WriteOvrld(Sym: TFunctionDecl);
+  begin
+    WriteId(Sym.Name);
+    WriteSInt32(Sym.ID);
   end;
 
   procedure WriteFunc(Sym: TFunctionDecl);
@@ -699,10 +708,14 @@ const
     WriteUInt32(Integer(Sym.Modifiers));
     WriteUInt32(Byte(Sym.CallConvention));
     WriteUInt32(Sym.ID);
-    WriteArgs(Sym.Args);
+    WriteArgs(Sym.Params);
     case Sym.NodeKind of
       nkMethod: begin
         WriteSInt32(TMethod(Sym).VTIndex);
+        WriteUInt32(TMethod(Sym).MsgNo);
+        WriteUInt32(Byte(TMethod(Sym).MethodKind));
+        WriteUInt32(Byte(TMethod(Sym).ObjectKind));
+        WriteSInt32(TMethod(Sym).DispID);
       end;
       nkExternalFunc: begin
         WriteStr(TExternalFunction(Sym).FileName);
@@ -729,7 +742,7 @@ const
     case Sym.NodeKind of
       nkBuiltinFunc: Result := False;
       nkType: begin
-        Result := not (TType(Sym).TypeCode in [typShortint..typOleVariant, typText]);
+        Result := not (TType(Sym).TypeCode in [typInt..typVariant, typText]);
         if Result then
           if TType(Sym).TypeCode = typFile then
             Result := TFileType(Sym).ElementType <> nil;
@@ -737,6 +750,11 @@ const
     else
       Result := True;
     end;
+  end;
+
+  function IsOverloadSym(sym: TSymbol): Boolean;
+  begin
+    Result := (sym.NodeKind = nkMethod) and (fmOvrldFlag in TMethod(sym).Modifiers);
   end;
 begin
   if Sym = nil then
@@ -748,6 +766,20 @@ begin
   if saPrimitive in Sym.Attr then
   begin
     WriteChar('z');
+    Exit;
+  end;
+
+  if Sym.NodeKind = nkEnumElement then
+  begin
+    // 已经在WriteEnum中
+    WriteChar('z');
+    Exit;
+  end;
+
+  if IsOverloadSym(Sym) then
+  begin
+    WriteChar('o');
+    WriteOvrld(TFunctionDecl(Sym));
     Exit;
   end;
 
@@ -766,8 +798,7 @@ begin
     nkIntfProperty: WriteIntfProp(TIntfProperty(Sym));
     nkMethod: WriteFunc(TFunctionDecl(Sym));
 //    nkMethodResolution,
-    nkArgument: WriteArg(TArgument(Sym));
-    nkEnumElement: begin end; // 已经在WriteEnum中
+    nkFuncParam: WriteArg(TFuncParam(Sym));
     nkFunc: WriteFunc(TFunctionDecl(Sym));
     nkExternalFunc: WriteFunc(TFunctionDecl(Sym));
 //    nkAccessor: WriteAccessor(TMultiAccessor(Sym));
@@ -796,23 +827,23 @@ procedure TCUWriter.WriteType(Typ: TType);
     end;
   end;
 
-  procedure WriteArg(V: TArgument);
+  procedure WriteArg(V: TFuncParam);
   begin
     WriteId(V.Name);
     WriteByte(Ord(V.ArgKind));
     if V.ArgKind = akNormal then
-      WriteRef(V.ArgType)
+      WriteRef(V.ParamType)
     else if V.ArgKind = akArrayOfType then
-      WriteRef(TOpenArrayType(V.ArgType).ElementType);
+      WriteRef(TOpenArrayType(V.ParamType).ElementType);
     // todo 1: Error
 //    if V.ArgKind in [akNormal, akArrayOfType] then
-//      WriteRef(V.ArgType);
+//      WriteRef(V.ParamType);
     WriteValue(V.DefaultValue);
     WriteUInt32(Byte(V.Modifier));
 //    WriteBool(V.IsOpenArray);
   end;
 
-  procedure WriteArgs(List: TList);
+  procedure WriteArgs(List: TFuncParamList);
   var
     i: Integer;
   begin
@@ -820,7 +851,7 @@ procedure TCUWriter.WriteType(Typ: TType);
     begin
       WriteUInt32(List.Count);
       for i := 0 to List.Count - 1 do
-        WriteArg(TArgument(List[i]));
+        WriteArg(List[i]);
     end
     else
       WriteUInt32(0);
@@ -832,7 +863,7 @@ procedure TCUWriter.WriteType(Typ: TType);
     WriteRef(typ.ReturnType);
     WriteUInt32(byte(typ.CallConvention));
     WriteBool(typ.IsMethodPointer);
-    WriteArgs(typ.Args);
+    WriteArgs(typ.Params);
   end;
 
   procedure WriteRecordBody(Body: TRecordBody);
@@ -883,18 +914,20 @@ procedure TCUWriter.WriteType(Typ: TType);
     for i := 0 to typ.Symbols.Count - 1 do
       WriteSymbol(typ.Symbols[i]);
   end;
-  {
+
   procedure WriteObject(typ: TObjectType);
   var
     i: Integer;
   begin
     WriteByte(Ord(typ.TypeCode));
     WriteRef(typ.Base);
-//    WriteRef(typ.DefaultProp);
+    WriteRef(typ.DefaultProp);
     WriteUInt32(typ.GlobalAlignSize);
     WriteUInt32(Byte(typ.ObjectAttr));
-
-  end; }
+    WriteUInt32(typ.Symbols.Count);
+    for i := 0 to typ.Symbols.Count - 1 do
+      WriteSymbol(typ.Symbols[i]);
+  end;
 
   procedure WriteClass(typ: TClassType);
   var
@@ -906,14 +939,11 @@ procedure TCUWriter.WriteType(Typ: TType);
     WriteRef(typ.DefaultProp);
     WriteUInt32(typ.GlobalAlignSize);
     WriteUInt32(Byte(typ.ClassAttr));
-    if typ.Interfaces <> nil then
-    begin
-      WriteUInt32(typ.Interfaces.Count);
-      for i := 0 to typ.Interfaces.Count - 1 do
-        WriteRef(TSymbol(typ.Interfaces[i]));
-    end
-    else
-      WriteUInt32(0);
+
+    WriteUInt32(typ.InterfaceCount);
+    for i := 0 to typ.InterfaceCount - 1 do
+      WriteRef(typ.Interfaces[i]);
+
     WriteUInt32(typ.Symbols.Count);
     for i := 0 to typ.Symbols.Count - 1 do
       WriteSymbol(typ.Symbols[i]);
@@ -1013,16 +1043,19 @@ procedure TCUWriter.WriteType(Typ: TType);
   end;
 begin
   case typ.TypeCode of
-    typShortint..typWideChar, typPAnsiChar, typPWideChar,
-    typAnsiString, typWideString, typUnicodeString, typShortString,
-    typVariant, typOleVariant, typText: begin
-    end;
+    typInt, typNumeric, typBool, typChar,
+    typPAnsiChar, typPWideChar,
+    typString, 
+    typVariant, typText:
+      begin
+      end;
 
     typPointer: WritePointer(TPointerType(typ));
     typRecord: WriteRecord(TRecordType(Typ));
+    typObject: WriteObject(TObjectType(Typ));
     typClass: WriteClass(TClassType(typ));
     typClassRef: WriteClassRef(TClassRefType(typ));
-    typInterface, typDispInterface: WriteInterface(TInterfaceType(typ));
+    typInterface: WriteInterface(TInterfaceType(typ));
     typEnum: WriteEnum(TEnumType(typ));
     typProcedural: WriteProc(TProceduralType(typ));
     typFile: WriteFileType(TFileType(typ));
@@ -1064,6 +1097,17 @@ procedure TCUWriter.WriteValue(const V: TValueRec);
   begin
     WriteStr(CurrToStr(c));
   end;
+
+  procedure WriteOffset;
+  var
+    sym: TSymbol;
+    offset: Integer;
+  begin
+    offset := ValGetAddrOffset(V, sym);
+    WriteSymbol(sym);
+    Self.WriteSInt32(offset);
+  end;
+
 begin
   WriteChar(Chr(Ord('0') + Ord(V.VT)));
   case V.VT of
@@ -1079,14 +1123,18 @@ begin
 
     vtSet: WriteSet(TSetValue(V.VSet));
 
-    vtBool: WriteBool(V.VBool);
-    vtStr: WriteStr(AnsiString(V.VStr));
+    vtBool: WriteUInt32(V.VBool);
+
+    vtStr: WriteStr(UTF8String(V.VStr));
     vtAChr: WriteChar(V.VAChr);
     vtWChr: WriteUInt32(Word(V.VWChr));
-    vtSymbol:
+    vtSymbol, vtAddrOfSymbol:
       WriteRef(V.VSymbol);
-
-    //vtArray, vtRecord
+    vtAddrOffset:
+      WriteOffset;
+    vtArray, vtRecord:
+      begin
+      end;
   else
     raise ECUWriteError.CreateFmt('Invalid value type: %d', [Ord(V.VT)]);
   end;
@@ -1103,9 +1151,11 @@ begin
   case Typ.TypeCode of
     typFile..typText:
       FmtError('File type not allowed in here');
-    typAnsiString..typUnicodeString,
-    typVariant..typOleVariant,
-    typDynamicArray, typInterface, typDispInterface:
+    typString:
+      if TStringType(Typ).Kind in [strAnsi, strWide, strUnicode] then
+        FmtError('Type need finalization, not allowed in file type');
+    typVariant,
+    typDynamicArray, typInterface:
       FmtError('Type need finalization, not allowed in file type');
     typArray:
       CheckFileType(TArrayType(Typ).ElementType);
@@ -1185,7 +1235,7 @@ function TCUReader.FindSymbol(const s: string): TSymbol;
       nkType:
         case TType(sym).TypeCode of
           typClass: Result := TClassType(sym).FindSymbol(s);
-          typInterface, typDispInterface: Result := TInterfaceType(sym).FindSymbol(s);
+          typInterface: Result := TInterfaceType(sym).FindSymbol(s);
           typRecord: Result := TRecordType(sym).FindSymbol(s);
           typObject: Result := TObjectType(sym).FindSymbol(s);
         else
@@ -1311,7 +1361,7 @@ begin
   ResolveSym(s, True, Inst, Ref, Kind, ExpectNodes, ExpectTypes, AllowNull);
 end;
 
-function TCUReader.GetSymbol(): TSymbol;
+function TCUReader.GetSymbol: TSymbol;
 
   function GetVar: TVariable;
   begin
@@ -1338,18 +1388,18 @@ function TCUReader.GetSymbol(): TSymbol;
     Result.FieldAttr := TFieldAttributes(Byte(ReadUInt32));
   end;
 
-  function GetArg: TArgument;
+  function GetArg: TFuncParam;
   begin
-    Result := TArgument(CreateSymbol(TArgument));
+    Result := TFuncParam(CreateSymbol(TFuncParam));
     Result.Name := ReadStr;
     Result.ArgKind := TArgumentKind(ReadByte);
     case Result.ArgKind of
       akNormal, akArrayOfType:
-        GetRef(Result, @Result.ArgType, fkAddr, [nkType], [], False);
+        GetRef(Result, @Result.ParamType, fkAddr, [nkType], [], False);
       akArrayOfConst:
-        Result.ArgType := FCntx.FVarOpenArrayType;
+        Result.ParamType := FCntx.FVarOpenArrayType;
       akUntype:
-        Result.ArgType := FCntx.FUntype;
+        Result.ParamType := FCntx.FUntype;
     else
       FmtError('Invalid argument kind');
     end;
@@ -1358,7 +1408,7 @@ function TCUReader.GetSymbol(): TSymbol;
     Result.Modifier := TArgumentModifier(Byte(ReadUInt32));
   end;
 
-  procedure GetArgs(List: TList; Count: Integer);
+  procedure GetArgs(List: TFuncParamList; Count: Integer);
   var
     i: Integer;
   begin
@@ -1380,8 +1430,8 @@ function TCUReader.GetSymbol(): TSymbol;
     i := ReadUInt32;
     if i > 0 then
     begin
-      Result.CreateArgs;
-      GetArgs(Result.Args, i);
+      Result.CreateParams;
+      GetArgs(Result.Params, i);
     end;
   end;
 
@@ -1406,8 +1456,8 @@ function TCUReader.GetSymbol(): TSymbol;
     i := ReadUInt32;
     if i > 0 then
     begin
-      Result.CreateArgs;
-      GetArgs(Result.Args, i);
+      Result.CreateParams;
+      GetArgs(Result.Params, i);
     end;
   end;
 
@@ -1431,13 +1481,18 @@ function TCUReader.GetSymbol(): TSymbol;
     i := ReadUInt32;
     if i > 0 then
     begin
-      Result.CreateArgs;
-      GetArgs(Result.Args, i);
+      Result.CreateParams;
+      GetArgs(Result.Params, i);
     end;
 
     case nk of
-      nkMethod:
+      nkMethod: begin
         TMethod(Result).VTIndex := ReadSInt32;
+        TMethod(Result).MsgNo := ReadUInt32;
+        TMethod(Result).MethodKind := TMethodKind(ReadUInt32);
+        TMethod(Result).ObjectKind := TObjectKind(ReadUInt32);
+        TMethod(Result).DispID := ReadSInt32;
+      end;
       nkExternalFunc: begin
         TExternalFunction(Result).FileName := ReadStr;
         TExternalFunction(Result).RoutineName := ReadStr;
@@ -1454,6 +1509,14 @@ function TCUReader.GetSymbol(): TSymbol;
         FmtError;
     end;
   end;
+
+  function GetOvrld: TOvrldSym;
+  begin
+    Result := TOvrldSym.Create;
+    Result.Name := ReadStr;
+    Result.ID := ReadSInt32;
+  end;
+
 var
   tag: AnsiChar;
   name: string;
@@ -1463,6 +1526,12 @@ begin
   if tag = 'z' then
   begin
     Result := nil;
+    Exit;
+  end;
+
+  if tag = 'o' then
+  begin
+    Result := GetOvrld;
     Exit;
   end;
 
@@ -1524,18 +1593,18 @@ function TCUReader.GetType: TType;
     Result.Update;
   end;
 
-  function GetArg: TArgument;
+  function GetArg: TFuncParam;
   begin
-    Result := TArgument(CreateSymbol(TArgument));
+    Result := TFuncParam(CreateSymbol(TFuncParam));
     Result.Name := ReadStr;
     Result.ArgKind := TArgumentKind(ReadByte);
     case Result.ArgKind of
       akNormal, akArrayOfType:
-        GetRef(Result, @Result.ArgType, fkAddr, [nkType], [], False);
+        GetRef(Result, @Result.ParamType, fkAddr, [nkType], [], False);
       akArrayOfConst:
-        Result.ArgType := FCntx.FVarOpenArrayType;
+        Result.ParamType := FCntx.FVarOpenArrayType;
       akUntype:
-        Result.ArgType := FCntx.FUntype;
+        Result.ParamType := FCntx.FUntype;
     else
       FmtError('Invalid argument kind');
     end;
@@ -1544,7 +1613,7 @@ function TCUReader.GetType: TType;
     Result.Modifier := TArgumentModifier(Byte(ReadUInt32));
   end;
 
-  procedure GetArgs(List: TList; Count: Integer);
+  procedure GetArgs(List: TFuncParamList; Count: Integer);
   var
     i: Integer;
   begin
@@ -1563,8 +1632,8 @@ function TCUReader.GetType: TType;
     i := ReadUInt32;
     if i > 0 then
     begin
-      Result.CreateArgs;
-      GetArgs(Result.Args, i);
+      Result.CreateParams;
+      GetArgs(Result.Params, i);
     end;
     Result.Size := FModule.PointerSize;
   end;
@@ -1640,6 +1709,25 @@ function TCUReader.GetType: TType;
     Result.Update;
   end;
 
+  procedure ResolveOvrld(st: TSymbolTable; ovrld: TOvrldSym);
+  var
+    sym: TSymbol;
+    meth: TMethod;
+  begin
+    sym := st.Find(ovrld.Name);
+    if (sym = nil) or (sym.NodeKind <> nkMethod) then
+      FmtErrorFmt('Method %s not found', [sym.Name]);
+    meth := TMethod(sym);
+    repeat
+      if meth.ID = ovrld.ID then
+      begin
+        st.AddOvrld(meth);
+        Break;
+      end;
+      meth := TMethod(meth.NextOverload);
+    until meth = nil;
+  end;
+
   function GetGuid: TGuid;
   var
     s: string;
@@ -1661,10 +1749,7 @@ function TCUReader.GetType: TType;
     Result := TInterfaceType(CreateSymbol(TInterfaceType));
 
     Result.IsDisp := ReadBool;
-    if Result.IsDisp then
-      ExpectTypes := [typDispInterface]
-    else
-      ExpectTypes := [typInterface];
+    ExpectTypes := [typInterface];
     GetRef(Result, @Result.Base, fkAddr, [nkType], ExpectTypes);
     Result.Guid := GetGuid;
     GetRef(Result, @Result.DefaultProp, fkAddr, [nkIntfProperty], []);
@@ -1673,11 +1758,18 @@ function TCUReader.GetType: TType;
       sym := GetSymbol;
       if sym = nil then Continue;
 
+      if sym is TOvrldSym then
+      begin
+        ResolveOvrld(Result.Symbols, TOvrldSym(sym));
+        sym.Free;
+        Continue;
+      end;
       if not (sym.NodeKind in [nkMethod, nkIntfProperty]) then
         FmtError('Property or method expected');
       Result.Symbols.Add(sym);
     end;
-    Result.Size := FModule.PointerSize;
+    Result.Size := FCntx.FPointerSize;
+    Result.UpdateVmt;
   end;
 
   function GetClass: TClassType;
@@ -1694,17 +1786,25 @@ function TCUReader.GetType: TType;
     count := ReadUInt32;
     if count > 0 then
     begin
-      Result.CreateInterfaces;
-      Result.Interfaces.Count := count;
       for i := 0 to count - 1 do
-        GetRef(nil, @Result.Interfaces.List^[i], fkAddr,
+      begin
+        Result.AddInterface(nil);
+        GetRef(nil, Result.GetInternalAddrOfIntf(i), fkAddr,
                 [nkType], [typInterface], False);
+      end;
     end;
 
     for i := 0 to ReadUInt32 - 1 do
     begin
       sym := GetSymbol;
       if sym = nil then Continue;
+
+      if sym is TOvrldSym then
+      begin
+        ResolveOvrld(Result.Symbols, TOvrldSym(sym));
+        sym.Free;
+        Continue;
+      end;
       if not (sym.NodeKind in [nkField, nkProperty, nkMethod]) then
         FmtError;
       Result.Symbols.Add(sym);
@@ -1718,7 +1818,6 @@ function TCUReader.GetType: TType;
       MR.Next := Result.MR;
       Result.MR := MR;
     end;
-//    Result.Size := FModule.PointerSize;
     Result.Update(Self.FPointerSize);
   end;
 
@@ -1727,6 +1826,35 @@ function TCUReader.GetType: TType;
     Result := TClassRefType(CreateSymbol(TClassRefType));
     GetRef(Result, @Result.RefType, fkAddr, [nkType], [typClass], False);
     Result.Size := FModule.PointerSize;
+  end;
+
+  function GetObject: TObjectType;
+  var
+    count, i: Integer;
+    sym: TSymbol;
+  begin
+    Result := TObjectType(CreateSymbol(TObjectType));
+    GetRef(Result, @Result.Base, fkAddr, [nkType], [typObject]);
+    GetRef(Result, @Result.DefaultProp, fkAddr, [nkProperty], []);
+    Result.GlobalAlignSize := ReadUInt32;
+    Result.ObjectAttr := TObjectAttributes(Byte(ReadUInt32));
+    count := ReadUInt32;
+    for i := 0 to count - 1 do
+    begin
+      sym := GetSymbol;
+      if sym = nil then Continue;
+
+      if sym is TOvrldSym then
+      begin
+        ResolveOvrld(Result.Symbols, TOvrldSym(sym));
+        sym.Free;
+        Continue;
+      end;
+      if not (sym.NodeKind in [nkField, nkProperty, nkMethod, nkType]) then
+        FmtError;
+      Result.Symbols.Add(sym);
+    end;
+    Result.Update(FCntx.FPointerSize);
   end;
 
   function GetFile: TFileType;
@@ -1817,6 +1945,7 @@ begin
     typPointer: Result := GetPtr;
     typEnum: Result := GetEnum;
     typProcedural: Result := GetProc;
+    typObject: Result := GetObject;
     typRecord: Result := GetRecord;
     typInterface: Result := GetIntf;
     typClass: Result := GetClass;
@@ -1869,6 +1998,16 @@ procedure TCUReader.GetValue(var V: TValueRec);
     if w > $ffff then FmtError;
     Result := WideChar(w);
   end;
+
+  procedure GetOffset;
+  var
+    offset: Integer;
+  begin
+    GetRef(nil, @V.VSymbol, fkAddr, [], []);
+    offset := ReadSInt32;
+    ValFromAddrOffset(V, nil, offset);
+  end;
+
 begin
   case ReadChar of
     '0': ValClear(V);
@@ -1877,17 +2016,19 @@ begin
     '3': V := ValFromReal(ReadFloat);
     '4': V := ValFromCurr(ReadCurr);
     '5': V := ValFromSet(ReadSet);
-    '6': V := ValFromBool(ReadBool);
+    '6': V := ValFromBool(ReadUInt32);
     '7': V := ValFromStr(ReadStr);
     '8': V := ValFromChar(ReadChar);
     '9': V := ValFromWChar(ReadWChar);
 //    #58: V := ValFromPtr(
-    #59: GetRef(nil, @V.VSymbol, fkAddr, [], []);
-//    #60:
-//    #61
+    #59: begin end;
+    #60: begin end;
+    #61, #62: GetRef(nil, @V.VSymbol, fkAddr, [], []);
+    #63: GetOffset;
 {
     vtInt, vtInt64, vtReal, vtCurr, vtSet, vtBool, vtStr,
-    vtAChr, vtWChr, vtPtr, vtSymbol, vtArray, vtRecord
+    vtAChr, vtWChr, vtPtr, vtArray, vtRecord, vtSymbol,
+    vtAddrOfSymbol
 }
   else
     FmtError;
@@ -1988,14 +2129,14 @@ begin
 //  FSymbols := M.Symbols;
   for i := 0 to ReadUInt32 - 1 do
   begin
-  try
+    try
       sym := GetSymbol;
-    if sym <> nil then
-      M.Symbols.Add(sym);
-  except
-    on E: Exception do
-      raise ECUReadError.CreateFmt('%d,%s', [i, E.Message]);
-  end;
+      if sym <> nil then
+        M.Symbols.Add(sym);
+    except
+      on E: Exception do
+        raise ECUReadError.CreateFmt('%d,%s', [i, E.Message]);
+    end;
   end;
 
   FixupRefs;
@@ -2164,9 +2305,9 @@ begin
 
   if Inst <> nil then
     case Inst.NodeKind of
-      nkArgument:
-        if TArgument(Inst).ArgKind = akArrayOfType then
-          TArgument(Inst).ArgType := FCntx.GetOpenArrayType(TArgument(Inst).ArgType);
+      nkFuncParam:
+        if TFuncParam(Inst).ArgKind = akArrayOfType then
+          TFuncParam(Inst).ParamType := FCntx.GetOpenArrayType(TFuncParam(Inst).ParamType);
     end;
 end;
 

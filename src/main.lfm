@@ -3,12 +3,12 @@ object MainFrm: TMainFrm
   Height = 494
   Top = 144
   Width = 717
-  Caption = 'pas2llvm'
+  Caption = 'Light Pascal Compiler'
   ClientHeight = 494
   ClientWidth = 717
   OnCreate = FormCreate
   Position = poDesktopCenter
-  LCLVersion = '1.0.1.3'
+  LCLVersion = '1.2.6.0'
   object Panel1: TPanel
     Left = 0
     Height = 161
@@ -21,33 +21,33 @@ object MainFrm: TMainFrm
     TabOrder = 0
     object Label1: TLabel
       Left = 68
-      Height = 13
+      Height = 12
       Top = 11
-      Width = 73
+      Width = 72
       Caption = 'Source File:'
       ParentColor = False
     end
     object Label2: TLabel
       Left = 8
-      Height = 13
+      Height = 12
       Top = 35
-      Width = 133
+      Width = 132
       Caption = 'Unit Output Directory:'
       ParentColor = False
     end
     object Label3: TLabel
       Left = 20
-      Height = 13
+      Height = 12
       Top = 83
-      Width = 121
+      Width = 120
       Caption = 'Library Directories:'
       ParentColor = False
     end
     object Label4: TLabel
       Left = 32
-      Height = 13
+      Height = 12
       Top = 59
-      Width = 109
+      Width = 108
       Caption = 'Include Directory:'
       ParentColor = False
     end
@@ -62,15 +62,15 @@ object MainFrm: TMainFrm
     end
     object edt_SrcFile: TEdit
       Left = 152
-      Height = 20
+      Height = 25
       Top = 8
       Width = 376
       TabOrder = 0
-      Text = 'test2\b7.pas'
+      Text = 'test\methptr001.pas'
     end
     object edt_UnitOutputDir: TEdit
       Left = 152
-      Height = 20
+      Height = 25
       Top = 32
       Width = 376
       TabOrder = 1
@@ -80,12 +80,15 @@ object MainFrm: TMainFrm
       Height = 73
       Top = 80
       Width = 376
+      Lines.Strings = (
+        '.\lib\i386-win32\rtl'
+      )
       ScrollBars = ssBoth
       TabOrder = 3
     end
     object edt_IncludeDir: TEdit
       Left = 152
-      Height = 20
+      Height = 25
       Top = 56
       Width = 376
       TabOrder = 2
@@ -110,22 +113,30 @@ object MainFrm: TMainFrm
     end
     object btnGenSys: TButton
       Left = 552
-      Height = 25
+      Height = 27
       Top = 104
-      Width = 128
+      Width = 141
       Caption = 'Generate System cu'
       OnClick = btnGenSysClick
       TabOrder = 7
     end
     object chkGenCode: TCheckBox
       Left = 55
-      Height = 17
+      Height = 21
       Top = 109
-      Width = 66
+      Width = 70
       Caption = '生成代码'
       Checked = True
       State = cbChecked
       TabOrder = 8
+    end
+    object chkDumpAst: TCheckBox
+      Left = 55
+      Height = 21
+      Top = 135
+      Width = 68
+      Caption = '导出AST'
+      TabOrder = 9
     end
   end
   object pgc1: TPageControl
@@ -140,11 +151,11 @@ object MainFrm: TMainFrm
     TabPosition = tpBottom
     object TabSheet1: TTabSheet
       Caption = 'Output'
-      ClientHeight = 308
+      ClientHeight = 303
       ClientWidth = 709
       object mmo_Output: TMemo
         Left = 0
-        Height = 308
+        Height = 303
         Top = 0
         Width = 709
         Align = alClient

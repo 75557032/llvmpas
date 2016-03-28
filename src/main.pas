@@ -17,6 +17,7 @@ type
     btnCopy: TButton;
     btnClear: TButton;
     btnGenSys: TButton;
+    chkDumpAst: TCheckBox;
     chkGenCode: TCheckBox;
     edt_IncludeDir: TEdit;
     edt_SrcFile: TEdit;
@@ -46,7 +47,7 @@ var
   MainFrm: TMainFrm;
 
 implementation
-uses ast, cntx, llvmemit;
+uses ast, cntx, dump, llvm_codegen;
 
 {$R *.lfm}
 
@@ -58,7 +59,7 @@ type
     procedure WriteLn(const s: string);
   public
     SrcFile, IncludeDir, UnitOutputDir, UnitDirs: string;
-    GenCode, IsSys: Boolean;
+    GenCode, IsSys, AstDump: Boolean;
 
     procedure Run;
   end;
@@ -81,53 +82,73 @@ end;
 
 procedure TCompiler.Run;
 var
-  inf, outf: string;
-  CurDir, LibDir: string;
+  inf: string;
+ // CurDir, LibDir: string;
   Context: TCompileContext;
   i: Integer;
   M: TModule;
 
-{  procedure DumpIR;
+  procedure DoGenLLCode(M: TModule);
   var
     cg: TCodeGen;
   begin
-    cg := TCodeGen.Create;
+    cg := TCodeGen.Create(Context);
     try
-      cg.EmitModule(M, Context);
-      WriteLn(cg.codes.text);
+      cg.EmitModuleDecl(M);
+      Self.FMemo.Text := cg.GetIR
     finally
       cg.Free;
     end;
-  end;  }
+  end;
+
+  procedure DoDump(M: TModule);
+  var
+    dump: TDump;
+    s: string;
+  begin
+    dump := TJsonDump.Create;
+    try
+      s := dump.Dump(M, DumpAllOptions);
+      FMemo.Lines.Add(s);
+    finally
+      dump.Free;
+    end;
+  end;
 begin
   inf := SrcFile;
   inf := SysUtils.ExpandFileName(inf);
   WriteLn(inf);
-  outf := ChangeFileExt(inf, '.cu');
+  //outf := ChangeFileExt(inf, '.cu');
 
   try
     Context := TCompileContext.Create;
     try
       Context.UnitOutputDir := UnitOutputDir;
-      Context.UnitDirs.Text := UnitDirs;
-      for i := 0 to Context.UnitDirs.Count - 1 do
+      Context.LibDirs.Text := UnitDirs;
+      for i := 0 to Context.LibDirs.Count - 1 do
       begin
-        Context.UnitDirs[i] := IncludeTrailingPathDelimiter(ExpandFileName(Context.UnitDirs[i]));
+        Context.LibDirs[i] := IncludeTrailingPathDelimiter(ExpandFileName(Context.LibDirs[i]));
       end;
-      CurDir := ExtractFilePath(ParamStr(0));
+{      CurDir := ExtractFilePath(ParamStr(0));
       LibDir := ExtractFilePath(ExcludeTrailingPathDelimiter(CurDir));
       LibDir := LibDir + 'lib' + PathDelim;
-      Context.UnitDirs.Add(LibDir);
+      Context.LibDirs.Add(LibDir);}
 
       Context.OnError := @OnError;
-      M := Context.Compile(inf, outf, IsSys, GenCode);
-      FMemo.Lines.Add(M.Codes);
-//      if not Context.HasError then
-//        DumpIR;
+      Context.IsSystemUnit := IsSys;
+      M := Context.Compile(inf);
+      if not Context.HasError then
+      begin
+        if GenCode then DoGenLLCode(M);
+        if AstDump then DoDump(M);
+//        FMemo.Lines.Add(M.Codes);
+//        if AstDump then FMemo.Lines.Add(M.Dump);
+      end;
     finally
       Context.Free;
     end;
   except
+    on E: EParseStop do ;
     on E: EParserError do
       WriteLn(Format('%s(%d,%d): %s', [ExtractFileName(E.FileName), E.Row, E.Column, E.Message]));
     on E: Exception do begin
@@ -164,6 +185,7 @@ begin
     Compiler.UnitDirs := mmo_LibDirs.Text;
     Compiler.IncludeDir := edt_IncludeDir.Text;
     Compiler.GenCode := chkGenCode.Checked;
+    Compiler.AstDump := chkDumpAst.Checked;
     Compiler.IsSys := False;
     Compiler.Run;
   finally
@@ -194,10 +216,10 @@ begin
   Compiler := TCompiler.Create;
   try
     Compiler.FMemo := mmo_Output;
-    Compiler.SrcFile := 'lib\system.pas';
-    Compiler.UnitOutputDir := '.';
+    Compiler.SrcFile := 'sources\rtl\system.pas';
+    Compiler.UnitOutputDir := 'lib\i386-win32\rtl\';
     Compiler.IsSys := True;
-    Compiler.GenCode := False;
+    Compiler.GenCode := True;
     Compiler.Run;
   finally
     Compiler.Free;

@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
     <Version Value="9"/>
@@ -35,7 +35,7 @@
         <PackageName Value="LCL"/>
       </Item1>
     </RequiredPackages>
-    <Units Count="15">
+    <Units Count="17">
       <Unit0>
         <Filename Value="lpcw.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -84,44 +84,54 @@
         <UnitName Value="cntx"/>
       </Unit8>
       <Unit9>
-        <Filename Value="llvmemit.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="llvmemit"/>
-      </Unit9>
-      <Unit10>
-        <Filename Value="ptrhashtable.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="ptrhashtable"/>
-      </Unit10>
-      <Unit11>
         <Filename Value="hashtable.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="hashtable"/>
-      </Unit11>
-      <Unit12>
+      </Unit9>
+      <Unit10>
         <Filename Value="err.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="err"/>
-      </Unit12>
-      <Unit13>
+      </Unit10>
+      <Unit11>
         <Filename Value="exprh.inc"/>
         <IsPartOfProject Value="True"/>
-      </Unit13>
-      <Unit14>
+      </Unit11>
+      <Unit12>
         <Filename Value="parser.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="parser"/>
+      </Unit12>
+      <Unit13>
+        <Filename Value="inst.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="inst"/>
+      </Unit13>
+      <Unit14>
+        <Filename Value="llvm_codegen.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="llvm_codegen"/>
       </Unit14>
+      <Unit15>
+        <Filename Value="llvm_codepack.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="llvm_codepack"/>
+      </Unit15>
+      <Unit16>
+        <Filename Value="dump.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="dump"/>
+      </Unit16>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
     <Version Value="11"/>
     <Target>
-      <Filename Value="../bin/lpcw"/>
+      <Filename Value="../release/lpcw"/>
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <UnitOutputDirectory Value="../lib/$(TargetCPU)-$(TargetOS)"/>
+      <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Linking>
       <Debugging>
@@ -134,10 +144,15 @@
       </Options>
     </Linking>
     <Other>
+      <Verbosity>
+        <ShowHints Value="False"/>
+      </Verbosity>
       <CompilerMessages>
-        <IgnoredMessages idx4022="True" idx5024="True" idx5028="True"/>
+        <IgnoredMessages idx4022="True" idx5024="True"/>
         <MsgFileName Value=""/>
       </CompilerMessages>
+      <CustomOptions Value="-Sa
+-vq"/>
       <CompilerPath Value="$(CompPath)"/>
     </Other>
   </CompilerOptions>

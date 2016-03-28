@@ -1,0 +1,42 @@
+object MemoDlgFrm: TMemoDlgFrm
+  Left = 323
+  Height = 291
+  Top = 156
+  Width = 509
+  BorderIcons = [biSystemMenu, biMaximize]
+  Caption = 'Message'
+  ClientHeight = 291
+  ClientWidth = 509
+  Position = poDesktopCenter
+  LCLVersion = '1.2.6.0'
+  object Memos: TMemo
+    Left = 0
+    Height = 249
+    Top = 0
+    Width = 509
+    Align = alClient
+    ScrollBars = ssVertical
+    TabOrder = 0
+  end
+  object Panel1: TPanel
+    Left = 0
+    Height = 42
+    Top = 249
+    Width = 509
+    Align = alBottom
+    ClientHeight = 42
+    ClientWidth = 509
+    TabOrder = 1
+    object btnOK: TButton
+      Left = 424
+      Height = 25
+      Top = 8
+      Width = 75
+      Anchors = [akTop, akRight]
+      Caption = 'OK'
+      Default = True
+      ModalResult = 1
+      TabOrder = 0
+    end
+  end
+end

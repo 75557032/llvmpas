@@ -4,7 +4,6 @@ unit hashtable;
 {$endif}
 
 interface
-   // inifiles
 uses SysUtils;
 
 const
@@ -17,77 +16,131 @@ type
   THashItem = record
     Next: PHashItem;
     HashCode: Cardinal;
-    Key: string;
+    Key: Pointer;
     Value: Pointer;
   end;
 
   EHashListError = class(Exception);
 
-  TCustomHashTable = class
+  THashTablePosition = Pointer;
+
+  { TBaseHashTable }
+
+  TBaseHashTable = class
   private
     Buckets: array of PHashItem;
     FCount: Integer;
     FItems: array of PHashItem;
-  //  FItems: array of PHashItem;    // order list
     FCapacity: Integer;
-    FCaseSensitive: Boolean;
     procedure Expand;
     procedure SetCapacity(const Value: Integer);
-    function GetKey(Index: Integer): string;
   protected
-    function Lookup(const Key: string): PPHashItem; overload;
-    function Lookup(const Key: string; HashCode: Cardinal): PPHashItem; overload;
+    procedure KeyDtor(var Key: Pointer); virtual;
+    function KeyEquals(Key1, Key2: Pointer): Boolean; virtual; abstract;
+    function HashOf(const Key: Pointer): Cardinal; virtual; abstract;
+    function Lookup(const Key: Pointer): PPHashItem; overload;
+    function Lookup(const Key: Pointer; HashCode: Cardinal): PPHashItem; overload;
 
-    function HashOf(const Key: string): Cardinal; virtual;
-    function Get(const Key: string): Pointer; overload;
-    function Get(const Key: string; HashCode: Cardinal): Pointer; overload;
-    procedure Put(const Key: string; Value: Pointer); overload;
-    procedure Put(const Key: string; HashCode:Cardinal; Value: Pointer); overload;
-    function Modify(const Key: string; Value: Pointer): Boolean;
+    function Get(const Key: Pointer): Pointer; overload;
+    function Get(const Key: Pointer; HashCode: Cardinal): Pointer; overload;
+    procedure Put(const Key: Pointer; Value: Pointer); overload;
+    procedure Put(const Key: Pointer; HashCode: Cardinal; Value: Pointer); overload;
+    function Modify(const Key: Pointer; Value: Pointer): Boolean;
     procedure Rehash;
     function ValueByIndex(Index: Integer): Pointer;
+    // 删除Key
+    procedure Remove(const Key: Pointer);
+    // 判断是否存在指定的Key
+    function IsExists(const Key: Pointer): Boolean; overload;
+    // 判断是否存在指定的Key和HashCode组合, 提供HashCode是为了避免再次调用HashOf
+    function IsExists(const Key: Pointer; HashCode: Cardinal): Boolean; overload;
+    // 查找第一个Key
+    function FindFirst(const Key: Pointer): THashTablePosition;
+    // 查找下一个Key
+    function FindNext(var Pos: THashTablePosition): Pointer;
   public
-    constructor Create(Size: Integer = 256; CaseSens: Boolean = False);
+    constructor Create(Size: Integer = 256);
     destructor Destroy; override;
     class procedure Error(const Msg: string; Data: Integer);
     // 清空,但不释放已经分配的Buckets和FItems数组
     procedure Clear;
-    // 删除Key
-    procedure Remove(const Key: string);
     // 确保已有容量不小于Count + IncSize
     procedure EnsureCapacity(IncSize: Integer);
-    // 判断是否存在指定的Key
-    function IsExists(const Key: string): Boolean; overload;
-    // 判断是否存在指定的Key和HashCode组合, 提供HashCode是为了避免再次调用HashOf
-    function IsExists(const Key: string; HashCode: Cardinal): Boolean; overload;
     // 返回Value的位置
     function IndexOf(Value: Pointer): Integer;
     // Buckets的容量
     property Capacity: Integer read FCapacity write SetCapacity;
     // 当前已经加入的数目
     property Count: Integer read FCount;
-    // 取Key
-    property Keys[Index: Integer]: string read GetKey;
-    // 比较Key的方式, True: 区分大小写, False: 不区分大小写
-    property CaseSensitive: Boolean read FCaseSensitive;
 
     // 计算某些性能信息
     function Statistics: string;
   end;
 
+  { TCustomHashTable }
+
+  TCustomHashTable = class(TBaseHashTable)
+  private
+    FCaseSensitive: Boolean;
+    function GetItem(Index: Integer): Pointer;
+    function GetKey(Index: Integer): string;
+  protected
+    function HashOf(const Key: Pointer): Cardinal; override;
+    function KeyEquals(Key1, Key2: Pointer): Boolean; override;
+    procedure KeyDtor(var Key: Pointer); override;
+    function HashOfStr(const Key: string): Cardinal;
+    procedure PutStr(const Key: string; hc: Cardinal; Value: Pointer);
+    function GetStr(const Key: string): Pointer;
+  public
+    constructor Create(Size: Integer = 256; CaseSens: Boolean = False);
+    procedure Remove(const Key: string);
+    function IsExists(const Key: string): Boolean; overload;
+    function IsExists(const Key: string; HashCode: Cardinal): Boolean; overload;
+
+    property CaseSensitive: Boolean read FCaseSensitive;
+    // 取Key
+    property Keys[Index: Integer]: string read GetKey;
+    // 按索引取
+    property Item[Index: Integer]: Pointer read GetItem;
+  end;
+
+  { THashTable }
+
   THashTable = class(TCustomHashTable)
   public
     procedure Put(const Key: string; Value: Pointer);
     function Get(const Key: string): Pointer;
-    // 增加映射, 如果已经存在返回True, 否则返回False
+    function FindFirst(const Key: string): THashTablePosition;
+    function FindNext(var Pos: THashTablePosition): Pointer;
+    // 增加映射。如果已经存在返回True, 否则返回False, 不增加重复值
     function Add(const Key: string; Value: Pointer): Boolean;
   end;
 
-  THashObjectList = class(TCustomHashTable)
+  THashObjectList = class(THashTable)
   public
     procedure Put(const Key: string; Value: TObject);
     function Get(const Key: string): TObject;
   end;
+
+  { TPtrHashTable }
+
+  TPtrHashTable = class(TBaseHashTable)
+  private
+    function GetKey(Index: Integer): Pointer;
+  protected
+    function HashOf(const Key: Pointer): Cardinal; override;
+    function KeyEquals(Key1, Key2: Pointer): Boolean; override;
+    procedure KeyDtor(var Key: Pointer); override;
+  public
+    // 增加映射, 如果已经存在返回True, 否则返回False
+    function Add(Key: Pointer; Value: Pointer): Boolean;
+    procedure Remove(const Key: Pointer);
+    function IsExists(const Key: Pointer): Boolean; overload;
+    function IsExists(const Key: Pointer; HashCode: Cardinal): Boolean; overload;
+    // 取Key
+    property Keys[Index: Integer]: Pointer read GetKey;
+  end;
+
 {
   THashItemManager = class
   private
@@ -100,35 +153,25 @@ type
 
 implementation
 
-{ TCustomHashTable }
+{ TBaseHashTable }
 
-procedure TCustomHashTable.Clear;
+procedure TBaseHashTable.Clear;
 var
 	I: Integer;
-{	P, N: PHashItem;}
 begin
-{	for I := 0 to Length(Buckets) - 1 do
-	begin
-		P := Buckets[I];
-		while P <> nil do
-		begin
-			N := P^.Next;
-			Dispose(P);
-			P := N;
-		end;
-		Buckets[I] := nil;
-	end;}
   for I := 0 to FCount - 1 do
+  begin
+    KeyDtor(FItems[I].Key);
     Dispose(FItems[I]);
+  end;
   FCount := 0;
   FillChar(FItems[0], Length(FItems) * SizeOf(Pointer), 0);
   FillChar(Buckets[0], Length(Buckets) * SizeOf(Pointer), 0);
 end;
 
-constructor TCustomHashTable.Create(Size: Integer; CaseSens: Boolean);
+constructor TBaseHashTable.Create(Size: Integer);
 begin
 	inherited Create;
-  FCaseSensitive := CaseSens;
   if Size > 0 then
   begin
     SetLength(Buckets, Size);
@@ -137,25 +180,25 @@ begin
   end;
 end;
 
-destructor TCustomHashTable.Destroy;
+destructor TBaseHashTable.Destroy;
 begin
 	Clear;
 	inherited;
 end;
 
-procedure TCustomHashTable.EnsureCapacity(IncSize: Integer);
+procedure TBaseHashTable.EnsureCapacity(IncSize: Integer);
 begin
   if IncSize > 0 then
     if IncSize + Count > Capacity then
       Capacity := IncSize + Count;
 end;
 
-class procedure TCustomHashTable.Error(const Msg: string; Data: Integer);
+class procedure TBaseHashTable.Error(const Msg: string; Data: Integer);
 begin
   raise EHashListError.CreateFmt(Msg, [Data]);
 end;
 
-procedure TCustomHashTable.Expand;
+procedure TBaseHashTable.Expand;
 var
   Delta: Integer;
 begin
@@ -170,7 +213,44 @@ begin
   SetCapacity(FCapacity + Delta);
 end;
 
-function TCustomHashTable.Get(const Key: string): Pointer;
+function TBaseHashTable.FindFirst(const Key: Pointer): THashTablePosition;
+begin
+  Result := Lookup(Key);
+  if PPHashItem(Result)^ = nil then Result := nil;
+end;
+
+function TBaseHashTable.FindNext(var Pos: THashTablePosition): Pointer;
+var
+  Item, Old: PPHashItem;
+begin
+  Item := Pos;
+
+  if not Assigned(Item) or not Assigned(Item^) then
+  begin
+    Result := nil;
+    Exit;
+  end
+  else
+    Result := Item^.Value;
+
+  // Search next
+  Old := Item;
+  Item := @Item^.Next;
+	while Item^ <> nil do
+	begin
+    if KeyEquals(Item^.Key, Old^.Key) then
+       Break
+    else
+      Item := @Item^.Next;
+	end;
+
+  if not Assigned(Item^) then
+    Pos := nil
+  else
+    Pos := Item;
+end;
+
+function TBaseHashTable.Get(const Key: Pointer): Pointer;
 var
 	P: PHashItem;
 begin
@@ -180,7 +260,7 @@ begin
 		Result := nil;
 end;
 
-function TCustomHashTable.Get(const Key: string;
+function TBaseHashTable.Get(const Key: Pointer;
   HashCode: Cardinal): Pointer;
 var
 	P: PHashItem;
@@ -191,43 +271,12 @@ begin
 		Result := nil;
 end;
 
-function TCustomHashTable.GetKey(Index: Integer): string;
-begin
-  if (Index < 0) or (Index > FCount) then
-    Error(SListIndexOutOfBound, Index);
-  Result := FItems[Index]^.Key;
-end;
-
-function TCustomHashTable.HashOf(const Key: string): Cardinal;
-var
-	I: Integer;
-begin
-	Result := 0;
-  if FCaseSensitive then
-  begin
-	  for I := 1 to Length(Key) do
-      Result := Cardinal(Integer(Result shl 5) - Integer(Result)) xor LongWord(Ord(Key[I]));
-//		  Result := ((Result shl 2) or (Result shr (SizeOf(Result) * 8 - 2))) xor Ord(Key[I]);
-  end
-  else
-  begin
-	  for I := 1 to Length(Key) do
-      Result := Cardinal(Integer(Result shl 5) - Integer(Result)) xor LongWord(Ord(Upcase(Key[I])));
-//		  Result := ((Result shl 2) or (Result shr (SizeOf(Result) * 8 - 2))) xor Ord(Upcase(Key[I]));
-  end;
-end;
-
-function TCustomHashTable.IsExists(const Key: string): Boolean;
-begin
-  Result := Lookup(Key)^ <> nil;
-end;
-
-function TCustomHashTable.IndexOf(Value: Pointer): Integer;
+function TBaseHashTable.IndexOf(Value: Pointer): Integer;
 var
   i: Integer;
 begin
   for i := 0 to FCount - 1 do
-    if FItems[i] = Value then
+    if PHashItem(FItems[i]).Value = Value then
     begin
       Result := i;
       Exit;
@@ -235,18 +284,28 @@ begin
   Result := -1;
 end;
 
-function TCustomHashTable.IsExists(const Key: string;
+function TBaseHashTable.IsExists(const Key: Pointer): Boolean;
+begin
+  Result := Lookup(Key)^ <> nil;
+end;
+
+function TBaseHashTable.IsExists(const Key: Pointer;
   HashCode: Cardinal): Boolean;
 begin
   Result := Lookup(Key, HashCode)^ <> nil;
 end;
 
-function TCustomHashTable.Lookup(const Key: string): PPHashItem;
+procedure TBaseHashTable.KeyDtor(var Key: Pointer);
+begin
+  Key := nil;
+end;
+
+function TBaseHashTable.Lookup(const Key: Pointer): PPHashItem;
 begin
   Result := Lookup(Key, HashOf(Key));
 end;
 
-function TCustomHashTable.Lookup(const Key: string;
+function TBaseHashTable.Lookup(const Key: Pointer;
   HashCode: Cardinal): PPHashItem;
 const
   BlankBucket: PHashItem = nil;
@@ -264,24 +323,14 @@ begin
 	Result := @Buckets[Hash];
 	while Result^ <> nil do
 	begin
-    if FCaseSensitive then
-    begin
-      if Result^.Key = Key then
-        Exit
-      else
-        Result := @Result^.Next;
-    end
+    if Self.KeyEquals(Result^.Key, Key) then
+       Exit
     else
-    begin
-      if SameText(Result^.Key, Key) then
-        Exit
-      else
-        Result := @Result^.Next;
-    end;
+      Result := @Result^.Next;
 	end;
 end;
 
-function TCustomHashTable.Modify(const Key: string; Value: Pointer): Boolean;
+function TBaseHashTable.Modify(const Key: Pointer; Value: Pointer): Boolean;
 var
 	P: PHashItem;
 begin
@@ -295,7 +344,7 @@ begin
 		Result := False;
 end;
 
-procedure TCustomHashTable.Put(const Key: string; Value: Pointer);
+procedure TBaseHashTable.Put(const Key: Pointer; Value: Pointer);
 var
 	bucketIndex: Integer;
   HashCode: Cardinal;
@@ -316,7 +365,7 @@ begin
 	Buckets[bucketIndex] := Bucket;
 end;
 
-procedure TCustomHashTable.Put(const Key: string; HashCode: Cardinal;
+procedure TBaseHashTable.Put(const Key: Pointer; HashCode: Cardinal;
   Value: Pointer);
 var
 	bucketIndex: Integer;
@@ -336,7 +385,7 @@ begin
 	Buckets[bucketIndex] := Bucket;
 end;
 
-procedure TCustomHashTable.Rehash;
+procedure TBaseHashTable.Rehash;
 var
   i: Integer;
   BucketSize: Cardinal;
@@ -355,7 +404,7 @@ begin
   end;
 end;
 
-procedure TCustomHashTable.Remove(const Key: string);
+procedure TBaseHashTable.Remove(const Key: Pointer);
 
   procedure RemoveItem(P: Pointer);
   var
@@ -380,11 +429,12 @@ begin
 	begin
 		Prev^ := P^.Next;
     RemoveItem(P);
+    KeyDtor(P^.Key);
 		Dispose(P);
 	end;
 end;
 
-procedure TCustomHashTable.SetCapacity(const Value: Integer);
+procedure TBaseHashTable.SetCapacity(const Value: Integer);
 begin
   if (Value < FCount) or (Value > MaxHashListSize) then
     Error(SListCapacityError, Value);
@@ -395,7 +445,7 @@ begin
   Rehash;
 end;
 
-function TCustomHashTable.Statistics: string;
+function TBaseHashTable.Statistics: string;
 var
   Bucket: PhashItem;
   Item: array[1..10] of Integer;
@@ -404,6 +454,7 @@ var
   HashMean,
   HashStdDev : Double;
 begin
+  Result := '';
   for I := Low(Item) to High(Item) do
     Item[I] := 0;
   Conflict := 0;
@@ -443,11 +494,99 @@ begin
       Result := Result + Format(', %d: %d', [I, Item[I]]);
 end;
 
-function TCustomHashTable.ValueByIndex(Index: Integer): Pointer;
+function TBaseHashTable.ValueByIndex(Index: Integer): Pointer;
 begin
   if (Index < 0) or (Index > FCount) then
     Error(SListIndexOutOfBound, Index);
   Result := FItems[Index]^.Value;
+end;
+
+{ TCustomHashTable }
+
+constructor TCustomHashTable.Create(Size: Integer; CaseSens: Boolean);
+begin
+  inherited Create(Size);
+  FCaseSensitive := CaseSens;
+end;
+
+function TCustomHashTable.GetItem(Index: Integer): Pointer;
+begin
+  Result := inherited ValueByIndex(Index);
+end;
+
+function TCustomHashTable.GetKey(Index: Integer): string;
+begin
+  if (Index < 0) or (Index > Count) then
+    Error(SListIndexOutOfBound, Index);
+  Result := string(FItems[Index]^.Key);
+end;
+
+function TCustomHashTable.GetStr(const Key: string): Pointer;
+begin
+  Result := inherited Get(PChar(Key));
+end;
+
+function TCustomHashTable.HashOf(const Key: Pointer): Cardinal;
+var
+	I: Integer;
+begin
+	Result := 0;
+  if FCaseSensitive then
+  begin
+	  for I := 1 to Length(string(Key)) do
+      Result := Cardinal(Integer(Result shl 5) - Integer(Result)) xor LongWord(Ord(string(Key)[I]));
+//		  Result := ((Result shl 2) or (Result shr (SizeOf(Result) * 8 - 2))) xor Ord(Key[I]);
+  end
+  else
+  begin
+	  for I := 1 to Length(string(Key)) do
+      Result := Cardinal(Integer(Result shl 5) - Integer(Result)) xor LongWord(Ord(Upcase(string(Key)[I])));
+//		  Result := ((Result shl 2) or (Result shr (SizeOf(Result) * 8 - 2))) xor Ord(Upcase(Key[I]));
+  end;
+end;
+
+function TCustomHashTable.HashOfStr(const Key: string): Cardinal;
+begin
+  Result := HashOf(PChar(Key));
+end;
+
+function TCustomHashTable.IsExists(const Key: string): Boolean;
+begin
+  Result := inherited IsExists(PChar(Key));
+end;
+
+function TCustomHashTable.IsExists(const Key: string; HashCode: Cardinal
+  ): Boolean;
+begin
+  Result := inherited IsExists(PChar(Key), HashCode);
+end;
+
+procedure TCustomHashTable.KeyDtor(var Key: Pointer);
+begin
+  string(Key) := '';
+end;
+
+function TCustomHashTable.KeyEquals(Key1, Key2: Pointer): Boolean;
+begin
+  if FCaseSensitive then
+    Result := string(Key1) = string(Key2)
+  else
+    Result := SameText(string(Key1), string(Key2));
+end;
+
+procedure TCustomHashTable.PutStr(const Key: string; hc: Cardinal;
+  Value: Pointer);
+var
+  keyVal: string;
+begin
+  keyVal := Key;
+  inherited Put(PChar(Key), hc, Value);
+  PPointer(@keyVal)^ := nil;
+end;
+
+procedure TCustomHashTable.Remove(const Key: string);
+begin
+  inherited Remove(PChar(Key));
 end;
 
 { THashObjectList }
@@ -467,6 +606,49 @@ end;
 function THashTable.Add(const Key: string; Value: Pointer): Boolean;
 var
   hc: Cardinal;
+  keyStr: string;
+  keyPtr: Pointer;
+begin
+  keyStr := Key;
+  keyPtr := PChar(Key);
+  hc := HashOf(keyPtr);
+  Result := inherited IsExists(keyPtr, hc);
+  if not Result then
+  begin
+    inherited Put(keyPtr, hc, Value);
+    PPointer(@keyStr)^ := nil;  // prevent from string release
+  end;
+end;
+
+function THashTable.FindFirst(const Key: string): THashTablePosition;
+begin
+  Result := inherited FindFirst(PChar(Key));
+end;
+
+function THashTable.FindNext(var Pos: THashTablePosition): Pointer;
+begin
+  Result := inherited FindNext(Pos);
+end;
+
+function THashTable.Get(const Key: string): Pointer;
+begin
+  Result := inherited Get(PChar(Key));
+end;
+
+procedure THashTable.Put(const Key: string; Value: Pointer);
+var
+  KeyVal: string;
+begin
+  KeyVal := Key;
+  inherited Put(PChar(KeyVal), Value);
+  PPointer(@KeyVal)^ := nil; // 阻止释放
+end;
+
+{ TPtrHashTable }
+
+function TPtrHashTable.Add(Key: Pointer; Value: Pointer): Boolean;
+var
+  hc: Cardinal;
 begin
   hc := HashOf(Key);
   Result := inherited IsExists(Key, hc);
@@ -474,14 +656,50 @@ begin
     inherited Put(Key, hc, Value);
 end;
 
-function THashTable.Get(const Key: string): Pointer;
+function TPtrHashTable.GetKey(Index: Integer): Pointer;
 begin
-  Result := inherited Get(Key);
+  if (Index < 0) or (Index > FCount) then
+    Error(SListIndexOutOfBound, Index);
+  Result := FItems[Index]^.Key;
 end;
 
-procedure THashTable.Put(const Key: string; Value: Pointer);
+function TPtrHashTable.HashOf(const Key: Pointer): Cardinal;
 begin
-  inherited Put(Key, Value);
+{$IFDEF FPC}
+  Result := SizeInt(Key);
+{$ELSE}
+  Result := Cardinal(Key);
+{$ENDIF}
+  Result := Result + not (Result shl 9);
+  Result := Result xor (Result shr 14);
+  Result := Result + (Result shl 4);
+  Result := Result xor (Result shr 10);
+end;
+
+function TPtrHashTable.IsExists(const Key: Pointer): Boolean;
+begin
+  Result := inherited IsExists(Key);
+end;
+
+function TPtrHashTable.IsExists(const Key: Pointer; HashCode: Cardinal
+  ): Boolean;
+begin
+  Result := inherited IsExists(Key, HashCode);
+end;
+
+procedure TPtrHashTable.KeyDtor(var Key: Pointer);
+begin
+  //
+end;
+
+function TPtrHashTable.KeyEquals(Key1, Key2: Pointer): Boolean;
+begin
+  Result := Key1 = Key2;
+end;
+
+procedure TPtrHashTable.Remove(const Key: Pointer);
+begin
+
 end;
 
 end.
