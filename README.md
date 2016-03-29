@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # a toy pascal compiler
 
 ## 命令行
@@ -62,3 +63,11 @@ string,variant,interface,dynarray等自动转型
 set相关代码
 open array
 ……等等
+=======
+llvmpas
+=======
+无证首发,v0.0001版本.
+中文名:撸撸拍死
+Logo:工兵铲
+ffff
+>>>>>>> 33857ef67d61838f9642ea73a9f0083d469b5f94
