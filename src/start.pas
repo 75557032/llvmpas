@@ -31,7 +31,7 @@ type
   private
     FTools_LL2BC, FTools_LL2Obj,
     FTools_LL2Asm, FTools_BC2Asm, FTools_Link: string;
-    FDump: Boolean;
+    FDump, FDumpCode: Boolean;
     FKeepLL: Boolean;  // -emit-llvm
     FParseOnly: Boolean; // -E
     FCompileToObj: Boolean; // -c
@@ -111,6 +111,7 @@ var
       finally
         fs.Free;
       end;
+      M.Codes := code;
     finally
       cg.Free;
     end;
@@ -179,6 +180,11 @@ var
     end;
   end;
 
+  procedure DoDumpCode(M: TModule);
+  begin
+    Writeln(M.Codes);
+  end;
+
 var
   ok: Boolean;
 begin
@@ -218,6 +224,10 @@ begin
       if FDump then
       begin
         DoDump(M);
+      end;
+      if FDumpCode then
+      begin
+        DoDumpCode(M);
       end;
     finally
       Context.Free;
@@ -431,6 +441,8 @@ begin
       Self.FParseOnly := True
     else if s = '-dump' then
       Self.FDump := True
+    else if s = '-dump-code' then
+      Self.FDumpCode := True
     else if s = '-O0' then
       Self.FOptLevel := 0
     else if s = '-O1' then
@@ -533,6 +545,7 @@ begin
   WriteLn(' -S           Compile source, generate asm .s file');
   WriteLn(' -O<n>        Optimization level. n: 0-2');
   WriteLn(' -dump        Dump AST nodes');
+  WriteLn(' -dump-code   Dump IL code or C++ code to stdout');
   WriteLn(' -emit-llvm   Keep .ll file not delete');
   WriteLn(' -llvm-target llvm IL code''s target');
 end;
