@@ -67,13 +67,65 @@ void Destroy(void* Self, char outterMost)
 三、字符串、Variant、接口
 
 
+四、异常处理
 
+LLVM异常处理一般形式：
 
+  %.ex.addr = alloca i8*
+  
+  invoke void @RaiseSomeExcept()
+          to label %next.stmt unwind label %lpad
+next.stmt:
+  ; ... some statement
+  br label %try.leave
 
+lpad:
+  %1 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*)
+          catch i8* null
+  %2 = extractvalue { i8*, i32 } %1, 0
+  %3 = tail call i8* @__cxa_begin_catch(i8* %2) nounwind
+  store i8* %3, i8** %.ex.addr
+  br label lpad.body
+lpad.body:
+  ; 做某些处理
+  
+  ; 异常已经处理完成
+  tail call void @__cxa_end_catch()
+  br label %try.leave
 
+  ; 如果没有得到处理，需要向上传播，则使用resume，把流程交给C++异常处理
+except.lpad.1.resume:
+  resume {i8*, i32} %1
+  unreachable
 
+try.leave:
 
+以上是只有一个异常处理块（一个 try except end 语句）的情况，如果在try语句之中嵌套异常，则机制略有些复杂。在内层异常得不到处理的时候，需要自己跳转到外层继续处理。不能使用resume来跳转
 
+如果在异常处理之中使用 try except end 或 try finally end ？
+try
+
+except
+	try
+	except
+	end;
+end;
+
+如果在异常处理这中使用Exit, Continue, Break?
+
+for i := 0 to len - 1 do
+begin
+	try
+		someAction;
+	except
+		try
+			if i = 3 then Break;
+			someAction;
+		except
+			if i = 4 then Continue;
+		end;
+	end;
+end;
 
 
 
