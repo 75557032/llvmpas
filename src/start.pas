@@ -152,7 +152,7 @@ var
       path := ExtractFilePath(FSource)
     else
       path := FExeOutputDir;
-    outfn := '"' + path + ExtractFileName(FSource) + '.exe' + '"';
+    outfn := '"' + path + ChangeFileExt(ExtractFileName(FSource), '.exe') + '"';
     path := ExtractFilePath(ParamStr(0));
     path := SysUtils.ExcludeTrailingPathDelimiter(path);
     path := ExtractFilePath(path);
@@ -228,7 +228,8 @@ begin
     on E: Exception do
     begin
       WriteLn(E.Message);
-      dump_stack(stdout,get_caller_frame(get_frame));
+      DumpExceptionBackTrace(stdout);
+    //  dump_stack(stdout,get_caller_frame(get_frame));
     end;
   end;
 end;
