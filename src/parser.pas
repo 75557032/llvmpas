@@ -480,7 +480,7 @@ begin
   if (LT.TypeCode = typClassRef) and (R.Typ.TypeCode = typClass) then
   begin
     Result := R.IsTypeSymbol;
-    if Result then R.Typ := LT;
+    if Result and AdjustRT then R.Typ := LT;
   end
   else if (LT.TypeCode = typClass) and (R.Typ.TypeCode = typClass)
       and R.IsCtorCall then
@@ -490,19 +490,21 @@ begin
     // var obj: tmyobj;
     // obj := tmyobj.create;
     Result := TClassType(LT).IsInheritedFrom(TClassType(R.Typ));
+    if Result and AdjustRT then R.Typ := LT;
   end
   else if R.IsNilConst then
   begin
     Result := LT.TypeCode in [typPointer, typProcedural, typClass,
       typClassRef, typPAnsiChar, typPWideChar, typDynamicArray,
       typInterface];
-//    if Result then R.Typ := LT;
+    // ??Why don't changed
+    //if Result and AdjustRT then R.Typ := LT;
   end
   else if R.IsStringConstant then
   begin
   // case: R is string constant, L is PAnsiChar,PWideChar,PackedString
     Result := LT.IsStringArithCompatible;
-    if Result and (LT.TypeCode <> typVariant)
+    if Result and AdjustRT and (LT.TypeCode <> typVariant)
         and (LT.TypeCode <> typArray) then
     begin
       R.Typ := LT;
@@ -5906,6 +5908,7 @@ function TParser.ParseRecordType(const TypName: string; Parent: TSymbol): TRecor
   begin
     Result := BodyClass.Create;
     Body := Result;
+    B2 := nil;
     while (CurToken <> tkEnd) and (CurToken <> tkBraceClose) do
     begin
       if CurToken = tkCase then

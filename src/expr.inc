@@ -1050,7 +1050,7 @@ const
     end;
   end;
 
-  function MinOfProcArgs(Sym: TSymbol): Integer;
+  function MinOfProcParams(Sym: TSymbol): Integer;
   begin
     case Sym.NodeKind of
       nkFunc, nkMethod, nkExternalFunc:
@@ -1060,6 +1060,13 @@ const
       Result := TProceduralType(Sym).MinOfParams;
     end;
   end;
+
+  function IsCtor(Sym: TSymbol): Boolean;
+  begin
+    Result := (Sym.NodeKind = nkMethod)
+            and (TMethod(Sym).MethodKind = mkConstructor);
+  end;
+
 type
   TCheckArgsResult = (caMismatched, caOk, caCompatible);
   TCheckOverloadResult = (coNonMatched, coMatched, coMultiMatched,
@@ -1151,10 +1158,27 @@ type
           Inc(Result);
     end;
 
-    function CheckTypeCompatibility(T1, T2: TType): Boolean;
+    // 检查实参和形参的类型兼容性
+    // T1 形参类型，T2 实参类型，E，实参表达式
+    function CheckTypeCompatibility(T1, T2: TType; E: TExpr): Boolean;
+    var
+      Temp: TType;
     begin
       if (T1 <> nil) and (T2 <> nil) then
-        Result := CheckAssignCompatibility(T1, T2)
+      begin
+        if (T1.TypeCode = typClass) and (T2.TypeCode = typClass)
+            and E.IsCtorSymbol then
+        begin
+          Result := TClassType(T1).IsInheritedFrom(TClassType(T2));
+          Exit;
+        end;
+
+        Temp := E.Typ;
+        Result := Self.CanAssign(T1, E);
+        if not (Result and (E.Typ <> Temp)) then
+          E.Typ := Temp;
+        //Result := CheckAssignCompatibility(T1, T2)
+      end
       else
         Result := False;
     end;
@@ -1175,7 +1199,7 @@ type
     end;
 
     // 检查形参与实参是否兼容
-    function CheckExprCompatibility(Arg: TFuncParam; E: TExpr): TCheckArgsResult;
+    function CheckExprCompatibility(Param: TFuncParam; E: TExpr): TCheckArgsResult;
     var
       Typ: TProceduralType;
       AlterTyp: TType;
@@ -1188,14 +1212,14 @@ type
       if Typ <> nil then
       begin
         AlterTyp := Typ;
-        Ok := CheckTypeCompatibility(Arg.ParamType, AlterTyp);
+        Ok := CheckTypeCompatibility(Param.ParamType, AlterTyp, E);
 
         if not Ok and (Typ.MinOfParams = 0) then
         begin
           AlterTyp := Typ.ReturnType;
           if AlterTyp <> nil then
           begin
-            Ok := CheckTypeCompatibility(Arg.ParamType, AlterTyp);
+            Ok := CheckTypeCompatibility(Param.ParamType, AlterTyp, E);
             if Ok and DoChange then
               Include(E.Attr, eaCall);
           end;
@@ -1203,7 +1227,7 @@ type
 
         if not Ok then
           Result := caMismatched
-        else if IsOverload and Arg.ParamType.Equals(AlterTyp) then
+        else if IsOverload and Param.ParamType.Equals(AlterTyp) then
           Result := caOk
         else
           Result := caCompatible;
@@ -1213,7 +1237,7 @@ type
     end;
 
     // 检查形参与实参的类型是否兼容。Ref是E指向的符号
-    function CheckSingleCompatibility(Arg: TFuncParam; E: TExpr; Ref: TSymbol): TCheckArgsResult;
+    function CheckSingleCompatibility(Param: TFuncParam; E: TExpr; Ref: TSymbol): TCheckArgsResult;
     var
       AlterTyp: TType;
       Ok: Boolean;
@@ -1222,7 +1246,7 @@ type
       begin
         AlterTyp := GetProcType(Ref);
         if AlterTyp <> nil then
-          Ok := CheckProcCompatibility(Arg.ParamType, AlterTyp)
+          Ok := CheckProcCompatibility(Param.ParamType, AlterTyp)
         else
           Ok := False;
         if Ok and DoChange then
@@ -1230,17 +1254,21 @@ type
       end
       else
       begin
-        //AlterTyp := E.Typ;
-        AlterTyp := GetProcType(Ref);
-        Ok := CheckTypeCompatibility(Arg.ParamType, AlterTyp);
+        if not IsCtor(Ref) then
+        begin
+          AlterTyp := GetProcType(Ref);
+          Ok := CheckTypeCompatibility(Param.ParamType, AlterTyp, E);
+        end
+        else
+          Ok := False;
 
-        if not Ok and (MinOfProcArgs(Ref) = 0) then
+        if not Ok and (MinOfProcParams(Ref) = 0) then
         begin
           //AlterTyp := Ref.ReturnType;
           AlterTyp := GetReturnType(Ref);
           if AlterTyp <> nil then
           begin
-            Ok := CheckTypeCompatibility(Arg.ParamType, AlterTyp);
+            Ok := CheckTypeCompatibility(Param.ParamType, AlterTyp, E);
             if Ok and DoChange then
             begin
               Include(E.Attr, eaCall);
@@ -1252,7 +1280,7 @@ type
 
       if not Ok then
         Result := caMismatched
-      else if IsOverload and Arg.ParamType.Equals(AlterTyp) then
+      else if IsOverload and Param.ParamType.Equals(AlterTyp) then
         Result := caOk
       else
         Result := caCompatible;
@@ -3250,6 +3278,7 @@ type
         if Result.Typ = nil then
           Result.Typ := FContext.FPointerType;
         SubstituteExpr(un, Result);
+      //  SubstituteExpr(un, un.Operand);
         Self.ReleaseExpr(un);
         un := nil;
       end;

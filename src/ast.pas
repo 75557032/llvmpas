@@ -6,6 +6,7 @@ uses Classes, SysUtils, hashtable;
 
 const
   ROOT_VMT_OFFSET = 8; // 这个值和TObject的设计有关, 目前TObject有8个虚函数
+  ROOT_VMT_ENTRY_COUNT = 19; // 根类VMT表项个数
 type
   TSymString = UTF8String;
 
@@ -1332,6 +1333,8 @@ end;
 
     // 是函数(包括方法、外部函数)符号
     function IsFunction: Boolean;
+    // 是构造函数符号
+    function IsCtorSymbol: Boolean;
     // 是类型符号
     function IsClassType: Boolean;
     // 是构造函数调用？
@@ -5502,6 +5505,15 @@ begin
     Result := (Fun <> nil) and (Fun.NodeKind = nkMethod)
               and (TMethod(Fun).MethodKind = mkConstructor);
   end;
+end;
+
+function TExpr.IsCtorSymbol: Boolean;
+var
+  Fun: TFunctionDecl;
+begin
+  Fun := Self.GetFunctionSymbol;
+  Result := (Fun <> nil) and (Fun.NodeKind = nkMethod)
+            and (TMethod(Fun).MethodKind = mkConstructor);
 end;
 
 function TExpr.IsEmptyString: Boolean;
