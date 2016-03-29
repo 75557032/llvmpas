@@ -5,8 +5,11 @@
 lpc [options] filename
 
 -c 编译为.obj
+
 -S 编译为.s
+
 -E 不生成.obj .s
+
 -dump 输出内部信息
 -O<n> 优化级别
 -emit-llvm 生成LLVM
