@@ -5025,10 +5025,10 @@ procedure TCodeGen.EmitOp_LoadRef(Ref: TSymbol; var Result: TVarInfo);
   begin
     QualID := MangledName(T);
     // 从19 开始是类的vmt。之前是系统保留的
-    Result.Name := Format('getelementptr(%%%s.$vmt.t* @%s.$vmt, i32 0, i32 19)', [
-      QualID, QualID
+    Result.Name := Format('bitcast(i8** getelementptr(%%%s.$vmt.t* @%s.$vmt, i32 0, i32 %d) to i8*)', [
+      QualID, QualID, ast.ROOT_VMT_ENTRY_COUNT
     ]);
-    Result.TyStr := 'i8**';
+    Result.TyStr := 'i8*';
     Result.States := [];
     AddExternalSymbol(T);
   end;
