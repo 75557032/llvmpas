@@ -5328,9 +5328,9 @@ begin
 // todo 1: 是否可以把大部分代码封装成一个函数：LoadObjInstPtr
 
   if (Fun.NodeKind = nkExternalFunc) and (TExternalFunction(Fun).RoutineName <> '') then
-    FunName := TExternalFunction(Fun).RoutineName
+    FunName := '@' + TExternalFunction(Fun).RoutineName
   else
-    FunName := MangledName(Fun);
+    FunName := '@' + MangledName(Fun);
   // 1 判断是否方法。
   // 非方法：直接取地址
   // 是方法：非虚方法 =>取this指针和方法地址
@@ -5447,12 +5447,12 @@ begin
     else
       SelfPtr := LV.Name;
 
-    if FunName[1] <> '@' then
-    begin
+    //if FunName[1] <> '@' then
+    //begin
       Va1 := TempVar;
       WriteCode('%s = bitcast %s %s to i8*', [Va1, ProcTypeStr(FunT), FunName]);
       FunName := Va1;
-    end;
+    //end;
 
     Va1 := TempVar;
     WriteCode('%s = insertvalue [2 x i8*] undef, i8* %s, 0', [
@@ -5604,18 +5604,6 @@ begin
           'EmitOp_Ptr: expected op is ptr');
     Assert(E.Typ.TypeCode = typBool, 'EmitOp_Ptr: expected result is bool');
 
-    // todo 1:需要考虑 方法指针
-   { if LT.IsMethodPointer then
-    begin
-      Assert(RT.IsMethodPointer, 'EmitOp_Ptr: expected both are method pointer');
-      Va := TempVar;
-      WriteCode('%s = extractvalue %s %s, 0', [Va, L.TyStr, L.Name]);
-      L.Name := Va;
-      L.TyStr := 'i8*';
-
-      Va := TempVar;
-      WriteCode('%s
-    end;    }
     if R.TyStr <> L.TyStr then
       EmitIns_Bitcast(R, L.TyStr);
     Result.Name := TempVar;
