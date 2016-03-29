@@ -482,6 +482,15 @@ begin
     Result := R.IsTypeSymbol;
     if Result then R.Typ := LT;
   end
+  else if (LT.TypeCode = typClass) and (R.Typ.TypeCode = typClass)
+      and R.IsCtorCall then
+  begin
+    // 考虑这种情况，无构造函数的类使用基类的构造函数：
+    // type tmyobj = class end;
+    // var obj: tmyobj;
+    // obj := tmyobj.create;
+    Result := TClassType(LT).IsInheritedFrom(TClassType(R.Typ));
+  end
   else if R.IsNilConst then
   begin
     Result := LT.TypeCode in [typPointer, typProcedural, typClass,

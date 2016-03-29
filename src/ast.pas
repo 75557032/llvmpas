@@ -1334,7 +1334,9 @@ end;
     function IsFunction: Boolean;
     // 是类型符号
     function IsClassType: Boolean;
-
+    // 是构造函数调用？
+    function IsCtorCall: Boolean;
+    // 是nil符号
     function IsNilConst: Boolean;
   end;
 
@@ -5486,6 +5488,19 @@ begin
       Result := GetReference.NodeKind = nkConstant;
   else
     Result := False;
+  end;
+end;
+
+function TExpr.IsCtorCall: Boolean;
+var
+  Fun: TFunctionDecl;
+begin
+  Result := Self.OpCode = opCALL;
+  if Result then
+  begin
+    Fun := TBinaryExpr(Self).Left.GetFunctionSymbol;
+    Result := (Fun <> nil) and (Fun.NodeKind = nkMethod)
+              and (TMethod(Fun).MethodKind = mkConstructor);
   end;
 end;
 
