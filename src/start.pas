@@ -210,7 +210,7 @@ begin
         else
           ok := LLToAsm = 0;
 
-        if ok and not FCompileToAsm and FCompileToObj and (M.Kind = mkProgram) then
+        if ok and not FCompileToAsm and not FCompileToObj and (M.Kind = mkProgram) then
         begin
           Link;
         end;
