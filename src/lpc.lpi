@@ -29,7 +29,7 @@
     <RunParams>
       <local>
         <FormatVersion Value="1"/>
-        <CommandLineParams Value="-c ..\test\methptr001.pas"/>
+        <CommandLineParams Value="..\test\methptr007.pas"/>
       </local>
     </RunParams>
     <Units Count="15">

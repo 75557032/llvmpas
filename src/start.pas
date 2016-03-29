@@ -202,7 +202,7 @@ begin
       Context.OnError := OnError;
       M := Context.Compile(FSource);
 
-      if not FParseOnly then
+      if not FParseOnly and not Context.HasError then
       begin
         DoGenLLCode(M);
         if not Self.FCompileToAsm then
