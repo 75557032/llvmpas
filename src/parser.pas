@@ -2136,8 +2136,7 @@ function TParser.ParseClassType(const TypName: string;
     Result := (F1.ReturnType = F2.ReturnType)
             and IsSameArgs(F1.Params, F2.Params)
             and (F1.CallConvention = F2.CallConvention)
-            and (F1.MethodKind = F2.MethodKind)
-            and not ((saClass in F2.Attr) or (saStatic in F2.Attr));
+            and (F1.MethodKind = F2.MethodKind);
   end;
 
 type
@@ -2153,7 +2152,8 @@ type
   function IsOverrided(typ: TClassType; Meth, BaseMeth: TMethod): TOverrideCheckFlag;
   begin
     if not ((fmVirtual in BaseMeth.Modifiers)
-            or (fmDynamic in BaseMeth.Modifiers)) then
+            or (fmDynamic in BaseMeth.Modifiers))
+        and (fmStatic in Meth.Modifiers) then
       Result := cfNotVirtual
     else if IsSameMethodDecl(BaseMeth, Meth) then
     begin
