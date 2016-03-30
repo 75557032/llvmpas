@@ -165,6 +165,30 @@ end;
 
 {$warn 5057 off}
 function RunDOS(const CommandLine, Dir: String; out ExitCode: DWORD): String;
+
+  function IsProcEnd(hProc: Thandle): Boolean;
+  var
+    Ret: Cardinal;
+  begin
+    Ret := WaitForSingleObject(hProc, 15);
+    Result := Ret = WAIT_OBJECT_0;
+  end;
+
+  function loadText(s: TStream; hProc: THandle): string;
+  const
+    BlockSize = 1024;
+  var
+    lenReaded, BufLen: Integer;
+  begin
+    Result := '';
+    BufLen := 0;
+    repeat
+      SetLength(Result, BufLen + BlockSize);
+      lenReaded := s.Read(Result[BufLen + 1], BlockSize);
+      Inc(BufLen, lenReaded);
+    until (lenReaded <> BlockSize) and IsProcEnd(hProc);
+    SetLength(Result, BufLen);
+  end;
 var
   HRead,HWrite: THandle;
   StartInfo: TStartupInfo;
@@ -206,21 +230,27 @@ begin
       );
 
   CheckResult(b);
-  WaitForSingleObject(ProceInfo.hProcess, INFINITE);
-
-  ExitCode := 0;
-  GetExitCodeProcess(ProceInfo.hProcess, ExitCode);
 
   inS := THandleStream.Create(HRead);
-  if inS.Size > 0 then
+  try
+    Result := loadText(ins, ProceInfo.hProcess);
+  finally
+    inS.free;
+  end;
+{  if inS.Size > 0 then
   begin
     sRet := TStringList.Create;
     sRet.LoadFromStream(inS);
     Result := sRet.Text;
     sRet.Free;
   end;
-  inS.Free;
+  inS.Free;}
+  //WaitForSingleObject(ProceInfo.hProcess, INFINITE);
 
+  ExitCode := 0;
+  GetExitCodeProcess(ProceInfo.hProcess, ExitCode);
+     CloseHandle(ProceInfo.hProcess);
+     CloseHandle(ProceInfo.hThread);
   finally
     CloseHandle(HRead);
     CloseHandle(HWrite);
