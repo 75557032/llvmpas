@@ -2683,7 +2683,7 @@ var
   FunName, SelfPtr, Va1, Va2, lpad, nextLabel: string;
   ParentT: TType;
   IsMeth, IsVirtual, IsSafecall,
-  IsTypePrefix, IsClassRefPrefix,
+  IsTypePrefix, IsClassRefPrefix, IsClassRefVarPrefix,
   IsCallBase, IsCtorInner, IsDtorInner,
   IsNested, IsCtor, IsDtor, RetConv: Boolean;
   CC: TCallingConvention;
@@ -2707,6 +2707,7 @@ begin
                   and (TBinaryOp(Left).Left.IsTypeSymbol);
   IsClassRefPrefix := (Left.OpCode = opcMember)
                   and (TBinaryOp(Left).Left.Typ.TypeCode = typClassRef);
+  IsClassRefVarPrefix := IsClassRefPrefix and not IsTypePrefix;
 
   if Assigned(Fun) then
   begin
@@ -2761,9 +2762,12 @@ begin
       else
         Assert(False, 'EmitFuncCall, invalid left node'); // 到这里应该不可能的
 
+      // 2种情况：
       // instance.classProc;
+      // classRefVar.classProc
       if (ParentT.TypeCode = typClass) and (saClass in Fun.Attr)
-          and not IsTypePrefix and not FTopCntx.IsClassFunc then
+          and not IsTypePrefix and not IsClassRefVarPrefix
+          and not FTopCntx.IsClassFunc then
       begin
         // 以实例调用类方法,先取出它的vmt
         // 其它如object之类不需要这样处理,因为它们的class方法不需要传入vmt
@@ -2789,7 +2793,7 @@ begin
       if (IsVirtual or (ParentT.TypeCode = typInterface))
                   and not IsCallBase and not IsTypePrefix then
       begin
-      // 加载虚函数
+      // 加载VMT
         if not (saClass in Fun.Attr) then
         begin
           if LV.TyStr <> 'i8***' then
@@ -5164,6 +5168,7 @@ begin
     nkType:
       case TType(Ref).TypeCode of
         typClass: LoadClassVmt(TClassType(Ref));
+        typClassRef: LoadClassVmt(TClassRefType(Ref).RefType);
       else
         Assert(False, 'EmitOp_LoadRef, nkType');
       end;
