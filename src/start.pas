@@ -32,7 +32,7 @@ type
     FTools_LL2BC, FTools_LL2Obj,
     FTools_LL2Asm, FTools_BC2Asm, FTools_Link: string;
     FDump, FDumpCode: Boolean;
-    FKeepLL: Boolean;  // -emit-llvm
+    FEmitLLVM: Boolean;  // -emit-llvm
     FParseOnly: Boolean; // -E
     FCompileToObj: Boolean; // -c
     FCompileToAsm: Boolean; // -S
@@ -135,12 +135,16 @@ var
 
   function LLToObj: Integer;
   begin
-    Result := ExecProcess(GetCmd(FTools_LL2Obj, FLLCodeFile, '.o'));
+    if Self.FEmitLLVM then
+      Result := ExecProcess(GetCmd(FTools_LL2BC, FLLCodeFile, '.bc'))
+    else
+      Result := ExecProcess(GetCmd(FTools_LL2Obj, FLLCodeFile, '.o'));
   end;
 
   function LLToAsm: Integer;
   begin
-    Result := ExecProcess(GetCmd(FTools_LL2Asm, FLLCodeFile, '.s'));
+    if not Self.FEmitLLVM then
+      Result := ExecProcess(GetCmd(FTools_LL2Asm, FLLCodeFile, '.s'));
   end;
 
   procedure Link;
@@ -450,7 +454,7 @@ begin
     else if s = '-O2' then
       Self.FOptLevel := 2
     else if s = '-emit-llvm' then
-      Self.FKeepLL := True
+      Self.FEmitLLVM := True
     else if s = '-sys-unit' then
       Self.FIsSystemUnit := True
     else if CheckPathOption(s, '-Fi', fn) then
