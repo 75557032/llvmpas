@@ -1,7 +1,7 @@
-﻿(*
+(*
 <test>
   <description>检查在构造函数调用另一个构造函数</description>
-  <command>%%pc %%source </command>
+  <command>%%pc -dump-code %%source </command>
   <expect>
     <output action="contains">IsCtorInner=true</output>
   </expect>

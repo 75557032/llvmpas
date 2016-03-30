@@ -4,7 +4,7 @@
   <command>%%pc %%source </command>
   <expect>
     <exitcode>0</exitcode>
-    <output action="contains"></output>
+    <output action="contains">IsTypePrefix=false</output>
   </expect>
 </test>
 *)

@@ -1,24 +1,20 @@
 (*
 <test>
-  <description>以类引用调用构造函数</description>
-  <command>%%pc -dump-code %%source </command>
+  <description>传递类引用给参数</description>
+  <command>%%pc %%source </command>
   <expect>
-    <output action="contains">IsClassrefPrefix=true</output>
+    <output action="contains"></output>
   </expect>
 </test>
 *)
-unit ctor003;
-interface
+program classref001;
+
 type
 	tmyobj = class
 		destructor destroy; override;
 	end;
 
 	tmyclass = class of tmyobj;
-
-procedure test(klass: tmyclass);
-
-implementation
 
 destructor tmyobj.destroy; 
 begin
@@ -33,4 +29,6 @@ begin
 	obj.Free;
 end;
 
+begin
+	test(tmyobj);
 end.
