@@ -269,7 +269,7 @@ type
   THandleExceptCmd = class(TCmd)
   public
 //    Handler: TFunction;
-    OutterLPad: string; // 外围的landingpad 符号
+    OutterLPad, ExceptVar: string; // 外围的landingpad 符号
     Cmds: TList;
     constructor Create; override;
     destructor Destroy; override;

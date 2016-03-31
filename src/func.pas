@@ -1058,10 +1058,10 @@ begin
   Assert(FStateCount > 0, 'SetInit');
   case sym.NodeKind of
     nkVariable:
-      if TVariable(sym).Index < $ffff then
+      if (TVariable(sym).Index < $ffff) and (sym.Parent = FFunc) then
         FStates[FStateCount-1][TVariable(sym).Index] := Value;
     nkFuncParam:
-      if TFuncParam(sym).Index < $ffff then
+      if (TFuncParam(sym).Index < $ffff) and (sym.Parent = FFunc) then
         FStates[FStateCount-1][TFuncParam(sym).Index] := Value;
   end;
 end;

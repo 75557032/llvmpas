@@ -1174,6 +1174,7 @@ type
         end;
 
         Temp := E.Typ;
+        E.Typ := T2;
         Result := Self.CanAssign(T1, E);
         if not (Result and (E.Typ <> Temp)) then
           E.Typ := Temp;

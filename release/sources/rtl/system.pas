@@ -405,12 +405,12 @@ procedure _OutOfRange;
 procedure _IOCheck;
 procedure _SafecallCheck(hr: Integer);
 procedure _RaiseExcept(exobj: TObject); external;
+procedure _Rethrow(exobj: TObject); external;
 procedure _HandleSafecallExcept(Instance, ExceptObject: TObject); external;
 function _InternalHandleSafecall(Instance, ExceptObject: TObject): Integer;
 procedure _HandleCtorExcept(E: Pointer; Instance: TObject; Flag: Shortint); external;
+procedure _HandleFinally(ExceptObject: TObject); external;
 procedure _Terminated;
-procedure _HandleExcept(ExceptObject: TObject; Slot: Integer);
-procedure _HandleFinally(ExceptObject: TObject);
 
 function _IsClass(Child: TObject; Parent: TClass): Boolean;
 function _AsClass(Child: TObject; Parent: TClass): TObject;
@@ -799,15 +799,6 @@ end;
 
 procedure _Terminated;
 begin
-end;
-
-procedure _HandleExcept(ExceptObject: TObject; Slot: Integer);
-begin
-end;
-
-procedure _HandleFinally(ExceptObject: TObject);
-begin
-
 end;
 
 function _IsClass(Child: TObject; Parent: TClass): Boolean;

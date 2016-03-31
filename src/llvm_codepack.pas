@@ -57,6 +57,7 @@ type
     FSelfSym, FResultSym: TSymbol;
     FSelfTypeSym: TSymbol;
     FExceptVar, FExPtrVar: TVariable;
+    FExceptVarID: Integer;
     //FSetBytesType: TOpenArrayType;
     //FByteSetType: TSetType;
     FBreakLabel, FContinueLabel, FQuitLabel: string;
@@ -90,6 +91,7 @@ type
     function CreateNode(NodeClass: TAstNodeClass): TAstNode;
 
     procedure CreateExPtrVar;
+    function CreateExVar: TVariable;
 
     procedure RemoveNode(Node: TObject);
     procedure AddRawArgs;
@@ -562,9 +564,23 @@ begin
     FExPtrVar.Level := FCurFunc.Level;
     FExPtrVar.VarAttr := [vaLocal, vaHidden];
     Include(FExPtrVar.Attr, saUsed);
-  //  FCurFunc.LocalSymbols.Add(FExceptVar);
+  //  FCurFunc.LocalSymbols.Add(FExPtrVar);
     FCurCode.Vars.Add(FExPtrVar);
   end;
+end;
+
+function TCodePack.CreateExVar: TVariable;
+begin
+  Inc(FExceptVarID);
+  Result := TVariable(CreateNode(TVariable));
+
+  Result.VarType := FContext.FTObjectType;
+  Result.Name := '$ex' + IntToStr(FExceptVarID);
+  Result.Level := FCurFunc.Level;
+  Result.VarAttr := [vaLocal, vaHidden];
+  Include(Result.Attr, saUsed);
+//  FCurFunc.LocalSymbols.Add(Result);
+  FCurCode.Vars.Add(Result);
 end;
 
 function TCodePack.CreateFunc: TFunction;
@@ -3673,21 +3689,6 @@ procedure TCodePack.SetupStmt_Try(Stmt: TTryStmt);
     S: array of TIfStmt;
     Handler: TExceptHandler;
   begin
-    if FExceptVar = nil then
-    begin
-      FExceptVar := TVariable(CreateNode(TVariable));
-
-      FExceptVar.VarType := FContext.FTObjectType;
-      FExceptVar.Name := '$ex';
-      FExceptVar.Level := FCurFunc.Level;
-      FExceptVar.VarAttr := [vaLocal, vaHidden];
-      Include(FExceptVar.Attr, saUsed);
-    //  FCurFunc.LocalSymbols.Add(FExceptVar);
-      FCurCode.Vars.Add(FExceptVar);
-    end;
-
-    CreateExPtrVar;
-    
     if ExBlock.Count = 0 then
     begin
       Result := ExBlock.Default;
@@ -3794,6 +3795,7 @@ var
   LFunc: TFunction;
   LIns: TCmd;
   Start: Integer;
+  OldVar: TVariable;
 begin
   // finally 中不可以有直接的 Break Continue Exit ，所以可以单独一个函数
   if Stmt.FinallyStmt <> nil then
@@ -3824,9 +3826,19 @@ begin
     LIns := CreateCmd(THandleExceptCmd, Stmt.Coord);
     AddCmd(LIns);
 
-    Start := FCurCode.Cmds.Count;
-    EmitExceptCmds(Stmt.ExceptBlock);
-    AttachExceptCmds(THandleExceptCmd(LIns).Cmds, Start);
+    CreateExPtrVar;
+    OldVar := FExceptVar;
+    FExceptVar := CreateExVar;
+
+    try
+      THandleExceptCmd(LIns).ExceptVar := FExceptVar.Name;
+
+      Start := FCurCode.Cmds.Count;
+      EmitExceptCmds(Stmt.ExceptBlock);
+      AttachExceptCmds(THandleExceptCmd(LIns).Cmds, Start);
+    finally
+      FExceptVar := OldVar;
+    end;
   end;
 
   SetupStmt(Stmt.Stmt);

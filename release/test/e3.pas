@@ -1,7 +1,6 @@
 (*
 <test>
   <description>
-    exception handle.
 	catch块异常对象的释放
   </description>
   <command>%%pc %%source </command>
@@ -41,23 +40,6 @@ begin
 	writeln('tmyobj.destroy');
 end;
 
-procedure raiseincatch;
-begin
-	try
-		raise tobject.create;
-	except
-		on e: tmyobj do
-			writeln('catch a tmyobj yet');
-	else
-		writeln('enter');
-		try
-			raise tmyobj.create;
-		finally
-			writeln('leave');
-		end;
-	end;
-end;
-
 procedure testobj;
 begin
 	try
@@ -75,7 +57,7 @@ begin
 end;
 
 begin
-	writeln('hello llvmpas');
+	writeln('hello');
 	testobj;
-	writeln('hello end');
+	writeln('bye');
 end.

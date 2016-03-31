@@ -1,8 +1,6 @@
 ; For llvm/clang 3.5
 ; clang -c e:/mydata/work/llvmpas/release/sources/rtl/ex.ll -o e:/mydata/work/llvmpas/release/lib/i386-win32/rtl/ex.o
 ; clang -c e:/mydata/work/llvmpas/release/lib/i386-win32/rtl/system.ll -o e:/mydata/work/llvmpas/release/lib/i386-win32/rtl/system.o
-; clang++ -c e:/mydata/work/llvmpas/release/test/e2.ll -o e:/mydata/work/llvmpas/release/test/e2.o
-; e:\software\mingw32\mingw32-dw2-4.7\bin\g++ -c e:/mydata/work/llvmpas/release/test/e2.s -o e:/mydata/work/llvmpas/release/test/e2.o
 
 declare ccc i32 @printf(i8*, ...) nounwind
 
@@ -49,6 +47,62 @@ entry:
   unreachable
 }
 
+define fastcc void @System._Rethrow(i8* %exPtr) noreturn
+{
+  %exobj = tail call i8* @__cxa_begin_catch(i8* %exPtr) nounwind
+
+  invoke void @__cxa_rethrow() noreturn
+          to label %unreachable unwind label %lpad2
+
+lpad2:
+  %.lp = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*)
+          cleanup
+  invoke void @__cxa_end_catch()
+          to label %eh.resume unwind label %terminate.lpad
+
+eh.resume:                                        ; preds = %lpad2
+  resume { i8*, i32 } %.lp
+
+terminate.lpad:                                   ; preds = %lpad2
+  %.99 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*)
+          catch i8* null
+  tail call void @_ZSt9terminatev() noreturn nounwind
+  unreachable
+
+unreachable:                                      ; preds = %lpad
+  unreachable
+}
+
+define fastcc void @System._HandleFinally(i8* %exPtr, i8* %cb, i8* %cbArg) noreturn
+{
+  %exobj = tail call i8* @__cxa_begin_catch(i8* %exPtr) nounwind
+
+  ; Call cleanup routine
+  %cleanProc = bitcast i8* %cb to void (i8*)*
+  invoke void (i8*)* %cleanProc(i8* %cbArg) to label %next1 unwind label %lpad2
+next1:
+  invoke void @__cxa_rethrow() noreturn
+          to label %unreachable unwind label %lpad2
+
+lpad2:
+  %.lp = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*)
+          cleanup
+  invoke void @__cxa_end_catch()
+          to label %eh.resume unwind label %terminate.lpad
+
+eh.resume:                                        ; preds = %lpad2
+  resume { i8*, i32 } %.lp
+
+terminate.lpad:                                   ; preds = %lpad2
+  %.99 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*)
+          catch i8* null
+  tail call void @_ZSt9terminatev() noreturn nounwind
+  unreachable
+
+unreachable:                                      ; preds = %lpad
+  unreachable
+}
+
 define fastcc i32 @System._HandleSafecallExcept(i8* %obj, i8* %exPtr)
 {
   %exobj = tail call i8* @__cxa_begin_catch(i8* %exPtr) nounwind
@@ -61,10 +115,10 @@ define fastcc i32 @System._HandleSafecallExcept(i8* %obj, i8* %exPtr)
 define fastcc void @System._HandleCtorExcept(i8* %exPtr, i8* %obj, i8 %flag) noreturn
 {
   %exobj = tail call i8* @__cxa_begin_catch(i8* %exPtr) nounwind
-  ; call FreeInstance
+  ; call Destroy;
   %.1 = bitcast i8* %obj to i8***
   %.2 = load i8*** %.1
-  %.3 = getelementptr i8** %.2, i32 -2
+  %.3 = getelementptr i8** %.2, i32 -1
   %.4 = load i8** %.3
   %.5 = bitcast i8* %.4 to void (i8*)*
   tail call fastcc void %.5(i8* %obj)

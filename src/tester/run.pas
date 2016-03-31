@@ -183,7 +183,8 @@ function RunDOS(const CommandLine, Dir: String; out ExitCode: DWORD): String;
     Result := '';
     BufLen := 0;
     repeat
-      SetLength(Result, BufLen + BlockSize);
+      if Length(Result) < BufLen + BlockSize then
+        SetLength(Result, BufLen + BlockSize);
       lenReaded := s.Read(Result[BufLen + 1], BlockSize);
       Inc(BufLen, lenReaded);
     until (lenReaded <> BlockSize) and IsProcEnd(hProc);

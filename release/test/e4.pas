@@ -61,7 +61,7 @@ begin
 end;
 
 begin
-	writeln('hello light pc');
+	writeln('hello');
 	raiseincatch;
-	writeln('hello end');
+	writeln('bye');
 end.

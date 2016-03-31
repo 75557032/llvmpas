@@ -283,6 +283,8 @@ const
 
   Visibility: array[Boolean] of string = ('private', '');
 
+  TlsStr: array[Boolean] of string = ('', 'thread_local(initialexec)');
+
   llvmTypeNames: array[ltI1..ltF64] of string = (
     'i1', 'i8', 'i16', 'i32', 'i64', 'float', 'double'
   );
@@ -1371,6 +1373,7 @@ procedure TCodeGen.EmitCmd(Cmd: TCmd; Pre: TCmd);
     Entry: TSwitchEntry;
     i: Integer;
   begin
+    Va1.States := [];
     EmitOp(Cmd.Value, Va1);
     EmitOp_VarLoad(Va1);
 
@@ -2394,24 +2397,31 @@ lpad:
   unreachable
 *)
     WriteLabel(LPad);
-    Va := TempVar;
-    WriteCode(Va + ' = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8* )');
+    Va2 := TempVar;
+    WriteCode(Va2 + ' = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8* )');
     WriteCode('   catch i8* bitcast(i8** @_ZTIPv to i8*)');
+    Va := TempVar;
+    WriteCode('%s = extractvalue { i8*, i32 } %s, 0', [Va, Va2]);
     WriteCode('br label %' + LPad + '.body');
     WriteLabel(LPad + '.body');
 
+    // 这里有个BUG,如果Handler抛出异常，那当前的异常会被取代，从而无法释放
+    // fpc,delphi都这样
     EmitCall(Handler, [FCurCntx.FrameTyStr + '*'], ['%.fp'], '');
 
     if Self.CurLandingPad = '' then
-      WriteCode('resume {i8*, i32} ' + Va)
+     // WriteCode('resume {i8*, i32} ' + Va)
+      WriteCode('call fastcc void @System._Rethrow(i8* %s) noreturn', [Va])
     else begin
       // 连接到上一个landingpad
-      Va2 := TempVar;
-      WriteCode('%s = extractvalue { i8*, i32 } %s, 0', [Va2, Va]);
-      WriteCode('store i8* %s, i8** %%$exptr.addr', [Va2]);
+    //  Va2 := TempVar;
+    //  WriteCode('%s = extractvalue { i8*, i32 } %s, 0', [Va2, Va]);
+    //  WriteCode('store i8* %s, i8** %%$exptr.addr', [Va2]);
+      WriteCode('store i8* %s, i8** %%$exptr.addr', [Va]);
       WriteCode('br label %%%s.body', [CurLandingPad]);
     end;
     WriteCode('unreachable');
+    Self.AddExternalSymbol(FContext.GetSystemRoutine(srRethrow));
   end;
 
   procedure WriteLandingPad(const LPad: string; Handler: THandleExceptCmd); overload;
@@ -2480,7 +2490,7 @@ lpad.unreachable:
     WriteCode('%s = load i8** %%$exptr.addr', [va]);
     va1 := TempVar;
     WriteCode('%s = tail call i8* @__cxa_begin_catch(i8* %s) nounwind', [va1, va]);
-    WriteCode('store i8* %s, i8** %%$ex.addr', [va1]);
+    WriteCode('store i8* %s, i8** %%%s.addr', [va1, Handler.ExceptVar]);
 
     Self.EnterLandingpad(LPad + '.catch');
     EmitCmds(Handler.Cmds);
@@ -3414,14 +3424,14 @@ begin
         Assert(False);
       end;
     typSet:
-      WriteDecl(Format('@%s =%s unnamed_addr constant %s %s', [
+      WriteDecl(Format('@%s =%s %s unnamed_addr constant %s %s', [
         MangledName(V), Visibility[saInternal in TSymbol(V).Attr],
-        TypeStr(V.VarType), InitSetValue
+        TlsStr[vaTls in V.VarAttr], TypeStr(V.VarType), InitSetValue
       ]));
   else
-    WriteDecl(Format('@%s =%s global %s %s', [
+    WriteDecl(Format('@%s =%s %s global %s %s', [
         MangledName(V), Visibility[saInternal in TSymbol(V).Attr],
-        TypeStr(V.VarType), InitValue
+        TlsStr[vaTls in V.VarAttr], TypeStr(V.VarType), InitValue
       ]));
   end;
 end;

@@ -33,7 +33,6 @@ type
 
 constructor tmyobj.Create;
 begin
-
 	writeln('tmyobj.create');
 end;
 
@@ -48,23 +47,25 @@ function getch: Integer; cdecl; external name 'getch';
 procedure raiseincatch;
 begin
 	try
-		raise tobject.create;
+		raise tmyobj.create;
 	except
-		on e: tmyobj do
-			writeln('catch a tmyobj yet');
-	else
 		writeln('enter');
 		try
 			raise tmyobj.create;
-		except
-			writeln('catch a tmyobj in except block');
+		finally
+			writeln('finally block in except block');
 		end;
 		writeln('leave');
 	end;
 end;
 
 begin
-	writeln('hello llvmpas');
-	raiseincatch;
-	writeln('hello end');
+	writeln('hello');
+	try
+		raiseincatch;
+	//	fn;
+	except
+		writeln('error from raiseincatch');
+	end;
+	writeln('bye');
 end.

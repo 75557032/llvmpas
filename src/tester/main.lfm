@@ -59,6 +59,7 @@ object MainFrm: TMainFrm
       Height = 25
       Top = 34
       Width = 292
+      DropDownCount = 25
       ItemHeight = 17
       ItemIndex = 0
       Items.Strings = (
