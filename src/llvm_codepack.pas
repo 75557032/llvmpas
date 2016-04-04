@@ -554,6 +554,8 @@ begin
 end;
 
 procedure TCodePack.CreateExPtrVar;
+var
+  LExSelVar: TVariable;
 begin
   if FExPtrVar = nil then
   begin
@@ -566,6 +568,16 @@ begin
     Include(FExPtrVar.Attr, saUsed);
   //  FCurFunc.LocalSymbols.Add(FExPtrVar);
     FCurCode.Vars.Add(FExPtrVar);
+
+    LExSelVar := TVariable.Create;
+    AddNode(LExSelVar);
+    LExSelVar.VarType := FContext.FIntegerType;
+    LExSelVar.Name := '$exsel';
+    LExSelVar.Level := FCurFunc.Level;
+    LExSelVar.VarAttr := [vaLocal, vaHidden];
+    Include(LExSelVar.Attr, saUsed);
+  //  FCurFunc.LocalSymbols.Add(LExSelVar);
+    FCurCode.Vars.Add(LExSelVar);
   end;
 end;
 
@@ -1332,6 +1344,8 @@ function TCodePack.EmitExpr_Builtin(E: TBinaryExpr; Sym: TBuiltinFunction
       S := CreateCmd(TEndExceptCmd, E.Coord);
       AddCmd(S);
     end;
+
+    // todo 1:退出之前释放 exobj
 
     // 带参数的Exit
     if TListExpr(E.Right).Count > 0 then
@@ -2860,6 +2874,7 @@ begin
   FCurCode.VarCleanFunc.Name := '$varclean';
   FCurCode.VarCleanFunc.Level := FCurFunc.Level + 1;
 
+  // 需要先加cleanup过程，Exit 要调用之后才能退出函数
   FCleanupStack.Add(FCurCode.VarCleanFunc);
 
   for i := 0 to F.LocalSymbols.Count - 1 do
@@ -3581,6 +3596,7 @@ begin
   if Stmt.Expr = nil then
   begin
     Cmd := CreateCmd(TReraiseCmd, Stmt.Coord);
+    TReraiseCmd(Cmd).ExceptVar := FExceptVar.Name;
     AddCmd(Cmd);
   end
   else
@@ -3767,17 +3783,25 @@ procedure TCodePack.SetupStmt_Try(Stmt: TTryStmt);
   procedure EmitExceptCmds(ExBlock: TExceptBlock);
   var
     S: TStatement;
+  begin
+    S := MakeExceptStmt(ExBlock);
+    if S = nil then
+      S := TEmptyStmt(CreateNode(TEmptyStmt));
+    SetupStmt(S);
+  end;
+
+{  procedure EmitExceptCmds(ExBlock: TExceptBlock);
+  var
+    S: TStatement;
     C: TCompoundStmt;
   begin
     S := MakeExceptStmt(ExBlock);
-//    if S = nil then
-//      S := TEmptyStmt(CreateNode(TEmptyStmt));
     C := TCompoundStmt(CreateNode(TCompoundStmt));
     if S <> nil then
       C.Statements.Add(S);
     C.Statements.Add(EmitCallFreeStmt);
     SetupStmt(C);
-  end;
+  end;}
 
   procedure AttachExceptCmds(List: TList; Start: Integer);
   var
@@ -3800,6 +3824,7 @@ begin
   // finally 中不可以有直接的 Break Continue Exit ，所以可以单独一个函数
   if Stmt.FinallyStmt <> nil then
   begin
+    CreateExPtrVar;
     // 创建一个函数，把 finally 代码移至这个函数。
     // 因为finally块需要在 Exit,Break,continue中调用，做成函数比较方便
     LFunc := CreateFunc;
@@ -3832,6 +3857,7 @@ begin
 
     try
       THandleExceptCmd(LIns).ExceptVar := FExceptVar.Name;
+      THandleExceptCmd(LIns).Level := FExceptCount;
 
       Start := FCurCode.Cmds.Count;
       EmitExceptCmds(Stmt.ExceptBlock);

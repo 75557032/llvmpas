@@ -166,6 +166,7 @@ type
     procedure ClearWStrInitList;
 
     procedure AddExternalSymbol(Sym: TSymbol);
+    procedure AddSystemRoutine(Routine: TSystemRoutine);
     // 声明外部符号(变量,RTTI,类型等)
     procedure EmitExternalDecl;
     // 声明系统类型的RTTI
@@ -657,6 +658,11 @@ begin
   wsInit.DataVarName := DataVarName;
   wsInit.DataTyStr := DataTyStr;
   FWStrInitList.Add(wsInit);
+end;
+
+procedure TCodeGen.AddSystemRoutine(Routine: TSystemRoutine);
+begin
+  AddExternalSymbol(FContext.GetSystemRoutine(Routine));
 end;
 
 function TCodeGen.ArgDeclStr(Arg: TFuncParam; NeedName: Boolean): string;
@@ -1433,6 +1439,8 @@ procedure TCodeGen.EmitCmd(Cmd: TCmd; Pre: TCmd);
           to label %unreachable unwind label %lpad1
     *)
     LPad := Self.CurLandingPad;
+    assert(Cmd.ExceptVar <> '', 'EmitReraise');
+    WriteCode('store i8* null, i8** %%%s.addr', [Cmd.ExceptVar]);
     WriteCode('invoke void @__cxa_rethrow() noreturn to label %%lpad.unreachable unwind label %%%s',
       [LPad]);
     FCurCntx.UnreachableUsed := True;
@@ -1482,10 +1490,10 @@ begin
         Self.EmitVarUninit(TEmitFuncContext(FCntxList[FCurCntx.Level-1]).Func);
       end;
     insCleanup:
-      Self.EnterLandingpad(TCleanupCmd(Cmd));
+      Self.EnterLandingpad(Cmd);
 
     insHandleExcept, insHandleCtorExcept, insHandleScExcept:
-      Self.EnterLandingpad(THandleExceptCmd(Cmd));
+      Self.EnterLandingpad(Cmd);
 
     insLeaveBlock: EmitLeaveBlock;
     insEndExcept: EmitEndExcept();
@@ -2387,12 +2395,20 @@ lpad:
 lpad:
   %0 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8* )
           catch i8* bitcast(i8** @_ZTIPv to i8* )
-  call void @u.proc.cleanup(i8* %fp)
-  resume {i8*, i32} %0
+  %1 = extractvalue { i8*, i32 } %0, 0
+  store i8* %1, i8** %$exptr.addr
+  %2 = extractvalue { i8*, i32 } %0, 1
+  store i32 %2, i32* %$exsel.addr
+  br label %lpad.body
+lpad.body:
+  invoke void @u.proc.cleanup(i8* %fp) to label %next1
+      unwind to label %outer.lpad
+next1:
+  ; rethrow this exception if it is on the outermost of landing pads
+  %.1 = load i8** %$exptr.addr
+  call fastcc @System._Rethrow(i8* %.1) noreturn
 
   ; or jump to outter landing pad
-  %1 = extractvalue { i8*, i32 } %0, 0
-  store i8* %1, i8** %%$exptr.addr
   br label %except.lpad1.body
   unreachable
 *)
@@ -2402,6 +2418,10 @@ lpad:
     WriteCode('   catch i8* bitcast(i8** @_ZTIPv to i8*)');
     Va := TempVar;
     WriteCode('%s = extractvalue { i8*, i32 } %s, 0', [Va, Va2]);
+    WriteCode('store i8* %s, i8** %%$exptr.addr', [Va]);
+    Va := TempVar;
+    WriteCode('%s = extractvalue { i8*, i32 } %s, 1', [Va, Va2]);
+    WriteCode('store i32 %s, i32* %%$exsel.addr', [Va]);
     WriteCode('br label %' + LPad + '.body');
     WriteLabel(LPad + '.body');
 
@@ -2410,18 +2430,17 @@ lpad:
     EmitCall(Handler, [FCurCntx.FrameTyStr + '*'], ['%.fp'], '');
 
     if Self.CurLandingPad = '' then
-     // WriteCode('resume {i8*, i32} ' + Va)
+    begin
+      Va := TempVar;
+      WriteCode('%s = load i8** %%$exptr.addr', [Va]);
       WriteCode('call fastcc void @System._Rethrow(i8* %s) noreturn', [Va])
+    end
     else begin
       // 连接到上一个landingpad
-    //  Va2 := TempVar;
-    //  WriteCode('%s = extractvalue { i8*, i32 } %s, 0', [Va2, Va]);
-    //  WriteCode('store i8* %s, i8** %%$exptr.addr', [Va2]);
-      WriteCode('store i8* %s, i8** %%$exptr.addr', [Va]);
       WriteCode('br label %%%s.body', [CurLandingPad]);
     end;
     WriteCode('unreachable');
-    Self.AddExternalSymbol(FContext.GetSystemRoutine(srRethrow));
+    AddSystemRoutine(srRethrow);
   end;
 
   procedure WriteLandingPad(const LPad: string; Handler: THandleExceptCmd); overload;
@@ -2433,8 +2452,14 @@ lpad:
   %0 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8* )
           catch i8* bitcast(i8** @_ZTIPv to i8* )
   %1 = extractvalue { i8*, i32 } %0, 0
-  %2 = tail call i8* @__cxa_begin_catch(i8* %1) nounwind
-  store i8* %.3, i8** %$ex.addr
+  store i8* %1, i8** %$exptr.addr
+  %2 = extractvalue { i8*, i32 } %0, 1
+  store i32 %2, i32* %$exsel.addr
+  br label %lpad.body
+lpad.body:
+  %3 = load i8** %$exptr.addr
+  %4 = tail call i8* @__cxa_begin_catch(i8* %3) nounwind
+  store i8* %4, i8** %$ex.addr
 
   ; example: rethrow current exception
   invoke void @__cxa_rethrow() noreturn
@@ -2447,21 +2472,31 @@ lpad:
 
   br label %lpad.quit
 lpad.quit:
-  ; free $ex
   tail call void @__cxa_end_catch()
+  ; free $ex
+  call void @System._FreeExceptObject(i8** %$ex.addr)
   br label %normal.code
 
 lpad.catch:       ; cleanup proc to call __cxa_end_catch()
-  %3 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8* )
+  %.3 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8* )
           cleanup
           catch i8* bitcast(i8** @_ZTIPv to i8* )
-	%.4 = extractvalue { i8*, i32 } %3, 0
+	%.4 = extractvalue { i8*, i32 } %.3, 0
+  %.5 = extractvalue { i8*, i32 } %.3, 1
 	store i8* %.4, i8** %$exptr.addr
+  store i32 %.5, i32* %$exsel.addr
+  br label %lpad.catch.body
+lpad.catch.body:
   invoke void @__cxa_end_catch()
           to label %lpad.resume unwind label %lpad.terminate
-
 lpad.resume:
-  resume { i8*, i32 } %3
+  call void @System._FreeExceptObject(i8** %$ex.addr)
+  %.6 = load i8** %$exptr.addr
+  %.7 = load i32* %$exsel.addr
+  %.8 = insertvalue { i8*, i32 } undef, i8* %.6, 0
+  %.pad = insertvalue {i8*, i32} %.8, i32 %.7, 1
+  resume { i8*, i32 } %.pad
+
   ; or jump to outter landingpad
   br label %lpad.body
 
@@ -2483,6 +2518,9 @@ lpad.unreachable:
     Va1 := TempVar;
     WriteCode('%s = extractvalue { i8*, i32 } %s, 0', [Va1, Va]);
     WriteCode('store i8* %s, i8** %%$exptr.addr', [Va1]);
+    Va1 := TempVar;
+    WriteCode('%s = extractvalue { i8*, i32 } %s, 1', [Va1, Va]);
+    WriteCode('store i32 %s, i32* %%$exsel.addr', [Va1]);
     WriteCode('br label %%%s', [LPad + '.body']);
     WriteLabel(LPad + '.body');
 
@@ -2498,29 +2536,52 @@ lpad.unreachable:
 
     WriteCode('br label %%%s.quit', [LPad]);
     WriteLabel(Format('%s.quit', [LPad]));
+    WriteCode('call fastcc void @System._FreeExceptObject(i8** %%%s.addr)', [Handler.ExceptVar]);
     WriteCode('tail call void @__cxa_end_catch()');
     WriteCode('br label %%%s.leave', [LPad]);
+
     WriteLabel(Format('%s.catch', [LPad]));
     va := TempVar;
     WriteCode(va + ' = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8* )');
     WriteCode('   cleanup');
-    if Handler.OutterLPad <> '' then
-    begin
-      WriteCode('   catch i8* bitcast(i8** @_ZTIPv to i8* )');
+   // if Handler.OutterLPad <> '' then
+   // begin
+   //   WriteCode('   catch i8* bitcast(i8** @_ZTIPv to i8* )');
+   // end;
       va1 := TempVar;
       WriteCode('%s = extractvalue { i8*, i32 } %s, 0', [va1, va]);
       WriteCode('store i8* %s, i8** %%$exptr.addr', [va1]);
-    end;
+      Va1 := TempVar;
+      WriteCode('%s = extractvalue { i8*, i32 } %s, 1', [Va1, Va]);
+      WriteCode('store i32 %s, i32* %%$exsel.addr', [Va1]);
+
+    WriteCode('br label %%%s.catch.body', [LPad]);
+    WriteLabel(Format('%s.catch.body', [LPad]));
+
     WriteCode('invoke void @__cxa_end_catch() to label %%%s.resume unwind label %%lpad.terminate',
       [LPad]);
     WriteLabel(Format('%s.resume', [LPad]));
+    WriteCode('call fastcc void @System._FreeExceptObject(i8** %%%s.addr)', [Handler.ExceptVar]);
+//    Self.EmitCallSys(srFreeAndNil, ['i8**'], ['%' + Handler.ExceptVar + '.addr']);
     if Handler.OutterLPad <> '' then
       WriteCode('br label %' + Handler.OutterLPad + '.body')
-    else
-      WriteCode('resume {i8*, i32} %s', [va]);
+    else begin
+      va := TempVar;
+      WriteCode('%s = load i8** %%$exptr.addr', [va]);
+  (*    va1 := TempVar;
+      WriteCode('%s = load i32* %%$exsel.addr', [va1]);
+      va2 := TempVar;
+      WriteCode('%s = insertvalue { i8*, i32 } undef, i8* %s, 0', [va2, va]);
+      va := TempVar;
+      WriteCode('%s = insertvalue { i8*, i32 } %s, i32 %s, 1', [va, va2, va1]);
+      WriteCode('resume {i8*, i32} %s', [va]); *)
+      WriteCode('call fastcc void @System._Rethrow(i8* %s) noreturn', [va]);
+    end;
     WriteCode('unreachable');
     FCurCntx.TerminatedUsed := True;
-    Self.AddExternalSymbol(FContext.GetSystemRoutine(srTerminated));
+    AddSystemRoutine(srTerminated);
+    AddSystemRoutine(srFreeExceptObject);
+    AddSystemRoutine(srRethrow);
   end;
 
   procedure WriteLandingPads;
@@ -2546,10 +2607,10 @@ lpad.unreachable:
               if TCleanupCmd(LCmd).OutterLPad <> '' then
                 LeaveLandingpad;
             end;
+
           insHandleExcept:
-            begin
               WriteLandingPad(LPad, THandleExceptCmd(LCmd));
-            end;
+
           insHandleScExcept:
             WriteSafecallLPad(LPad);
           insHandleCtorExcept:
@@ -6330,12 +6391,17 @@ var
 begin
   with FCurCntx do
   begin
+    if LandingpadStack.Count > 0 then
+      LPrev := LandingpadStack[LandingpadStack.Count - 1]
+    else
+      LPrev := '';
+    {
     for i := LandingpadStack.Count - 1 downto 0 do
       if LandingpadStack.Objects[i] <> nil then
       begin
         LPrev := LandingpadStack[i];
         Break;
-      end;
+      end;}
   end;
 
   Inc(FCurCntx.PadID);
@@ -6364,23 +6430,6 @@ begin
     LandingpadStack.AddObject(LPad, Handler);
   end;
 end;
-
-{
-procedure TCodeGen.EnterLandingpad(Handler: TFunction; IsCleanup: Boolean);
-var
-  LPad: string;
-begin
-  Inc(FCurCntx.PadID);
-  if IsCleanup then
-    LPad := Format('clean.lpad.%d', [FCurCntx.PadID])
-  else
-    LPad := Format('except.lpad.%d', [FCurCntx.PadID]);
-  with FCurCntx do
-  begin
-    Landingpads.AddObject(LPad, Handler);
-    LandingpadStack.AddObject(LPad, Handler);
-  end;
-end;}
 
 function TCodeGen.FuncDecl(F: TFunctionDecl; NeedArgName: Boolean;
   const Name: string): string;
