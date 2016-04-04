@@ -268,9 +268,9 @@ type
 
   THandleExceptCmd = class(TCmd)
   public
-//    Handler: TFunction;
     OutterLPad, ExceptVar: string; // ÍâÎ§µÄlandingpad ·ûºÅ
     Cmds: TList;
+    Level: Integer;
     constructor Create; override;
     destructor Destroy; override;
   end;
@@ -323,6 +323,7 @@ type
 
   TReraiseCmd = class(TCmd)
   public
+    ExceptVar: string;
     constructor Create; override;
   end;
 
@@ -353,8 +354,8 @@ const
   //  opMUL, opFDIV, opIDIV, opMOD, opAND, opSHL, opSHR,
     opcMUL, opcFDIV, opcIDIV, opcMOD, opcAND, opcSHL, opcSHR,
 
-  //  opMEMBER, opCAST, opCALL, opRANGE, opINDEX, opASSIGN,
-    opcMEMBER, opcCAST, opcCALL, opcRANGE, opcINDEX, opcASSIGN,
+  //  opMEMBER, opCAST, opCALL, opRANGE, opINDEX, opASSIGN,    opFMT
+    opcMEMBER, opcCAST, opcCALL, opcRANGE, opcINDEX, opcASSIGN, opcNONE,
   //  opNOT, opNEG, opPOS, opINHERITED, opSET, opLIST,
     opcNOT, opcNEG, opcNONE, opcNONE, opcSET, opcLIST,
   //  opADDR, opDBLADDR, opINST, opDISPCALL,

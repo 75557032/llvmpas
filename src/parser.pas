@@ -2941,6 +2941,47 @@ begin
 end;
 
 function TParser.ParseDesignator: TExpr;
+  function HasFormatArg(E: TExpr): Boolean;
+  var
+    Ref: TSymbol;
+  begin
+    Ref := E.GetReference;
+    Result := (Ref <> nil) and (Ref.NodeKind = nkBuiltinFunc)
+            and (TBuiltinFunction(Ref).Kind in [bfStr, bfWrite, bfWriteln]);
+  end;
+
+  function ParseFormatArgs: TListExpr;
+  var
+    OutE, WidE, DecE: TExpr;
+    FmtE: TBinaryExpr;
+  begin
+    Result := Self.CreateListExpr;
+    repeat
+      OutE := ParseExpr;
+      WidE := nil;
+      DecE := nil;
+      if CurToken = tkColon then
+      begin
+        WidE := ParseExpr;
+        if CurToken = tkColon then
+          DecE := ParseExpr;
+      end;
+
+      IF WidE = nil then
+        Result.Add(OutE)
+      else begin
+        FmtE := CreateBinaryExpr(opFMT, OutE, nil);
+        FmtE.Right := CreatebinaryExpr(opFMT, WidE, DecE);
+        Result.Add(FmtE);
+      end;
+
+      if CurToken = tkBraceClose then Break;
+
+      Expect(tkComma);
+      NextToken;
+    until False;
+  end;
+
 var
   L, R: TExpr;
 begin
@@ -3051,6 +3092,14 @@ begin
           if CurToken = tkBraceClose then
             Expect(tkIdentifier);
           R := ParseExpr;
+        end
+        else if HasFormatArg(L) then
+        begin
+          if CurToken = tkBraceClose then
+            R := CreateListExpr
+          else
+            R := ParseFormatArgs;
+          Include(R.Attr, eaArgList);
         end
         else
         begin

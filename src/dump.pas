@@ -116,8 +116,10 @@ const
     '+', '-', 'or', 'xor', '*', '/', 'div',
 //  opMOD, opAND, opSHL, opSHR,
     'mod', 'and', 'shl', 'shr',
-//  opMEMBER, opCAST, opCALL, opRANGE, opINDEX, opASSIGN, opNOT, opNEG, opPOS,
-    'memberof', 'cast', 'call', 'range', 'index', ':=', 'not', 'neg', 'pos',
+//  opMEMBER, opCAST, opCALL, opRANGE, opINDEX, opASSIGN, opFMT,
+    'memberof', 'cast', 'call', 'range', 'index', ':=',   ':',
+//  opNOT, opNEG, opPOS,
+    'not', 'neg', 'pos',
 // opINHERITED, opSET, opLIST, opADDR, opDBLADDR, opINST, opDISPCALL, opNIL,
     'inherited', 'set', 'list', '@',   '@@',      '^',    '.', 'nil',
 // opCONST, opSYMBOL

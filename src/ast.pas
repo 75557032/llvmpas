@@ -1086,6 +1086,11 @@ end;
     function IsUntype: Boolean;
   end;
 
+  TTextType = class(TType)
+  public
+    constructor Create; override;
+  end;
+
   TSymbolType = class(TType)
   public
     Reference: TSymbol; // TNameScope or TModule
@@ -1228,6 +1233,7 @@ end;
     opRANGE,  // .. subrange
     opINDEX,  // [] array index
     opASSIGN, // :=
+    opFMT,    // Value:Width:DecPlace
     // unary
     opNOT, opNEG, opPOS,
     opINHERITED, // inherited keyword
@@ -1573,7 +1579,7 @@ end;
       bfLow, bfNew, bfOdd, bfOrd, bfPred, bfPtr, bfRound, bfSucc, bfSetLength,
       bfSizeOf, bfSwap, bfTrunc, bfTypeInfo,
       bfNoop
-      //,bfWriteLn, bfReadLn, bfWrite, bfRead
+      ,bfStr, bfWrite, bfWriteLn, bfRead, bfReadLn
       //,bfFillChar, bfMove, bfVal
   );
 
@@ -1854,8 +1860,8 @@ const
    opkBinary, opkBinary, opkBinary, opkBinary, opkBinary, opkBinary, opkBinary,
 // opMEMBER,  opCAST,    opCALL,    opRANGE,
    opkBinary, opkBinary, opkBinary, opkBinary,
-// opINDEX,    opASSIGN,  opNOT,    opNEG,    opPOS,
-   opkBinary,  opkBinary, opkUnary, opkUnary, opkUnary,
+// opINDEX,    opASSIGN,  opFMT,     opNOT,    opNEG,    opPOS,
+   opkBinary,  opkBinary, opkBinary, opkUnary, opkUnary, opkUnary,
 // opINHERITED, opSET,    opLIST,  opADDR,   opDBLADDR, opINST,   opDISPCALL,
    opkUnary,    opkUnary, opkList, opkUnary, opkUnary,  opkUnary, opkUnary,
 // opNIL,    opCONST,  opSYMBOL
@@ -1872,8 +1878,8 @@ const
       2,     2,      2,      2,     2,     2,     2,
   // opMEMBER,  opCAST, opCALL, opRANGE,
       2,         2,      2,      2,
-  // opINDEX, opASSIGN, opNOT, opNEG, opPOS,
-      2,         2,       1,    1,     1,
+  // opINDEX, opASSIGN, opFMT, opNOT, opNEG, opPOS,
+      2,         2,       2,     1,    1,     1,
   // opINHERITED, opSET, opLIST, opADDR, opDBLADDR, opINST, opDISPCALL,
       1,           1,     5,      1,      1,        1,      1,
   // opNIL, opCONST, opSYMBOL
@@ -5311,6 +5317,13 @@ end;
 function TFileType.IsUntype: Boolean;
 begin
   Result := ElementType = nil;
+end;
+
+constructor TTextType.Create;
+begin
+  inherited;
+  FTypeCode := typText;
+  FSize := 4;
 end;
 
 { TProceduralType }
