@@ -406,6 +406,7 @@ procedure _IOCheck;
 procedure _SafecallCheck(hr: Integer);
 procedure _RaiseExcept(exobj: TObject); external;
 procedure _Rethrow(exobj: TObject); external;
+procedure _FreeExceptObject(var exobj: TObject); external;
 procedure _HandleSafecallExcept(Instance, ExceptObject: TObject); external;
 function _InternalHandleSafecall(Instance, ExceptObject: TObject): Integer;
 procedure _HandleCtorExcept(E: Pointer; Instance: TObject; Flag: Shortint); external;

@@ -28,6 +28,7 @@ declare void @_ZSt9terminatev()
 declare void @exit(i32) noreturn nounwind
 
 declare fastcc i32 @System._InternalHandleSafecall(i8*, i8*)
+declare fastcc void @System.FreeAndNil(i8**)
 
 define fastcc void @System._CrtExit(i32 %code) noreturn
 {
@@ -73,13 +74,28 @@ unreachable:                                      ; preds = %lpad
   unreachable
 }
 
+define fastcc void @System._FreeExceptObject(i8** %exobj.addr)
+{
+  ; Free object and supress all error
+  invoke fastcc void @System.FreeAndNil(i8** %exobj.addr) to label %.quit unwind label %lpad
+.quit:
+	ret void
+lpad:                                             ; preds = %entry
+  %.0 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*)
+          catch i8* null
+  %.1 = extractvalue { i8*, i32 } %.0, 0
+  %.2 = tail call i8* @__cxa_begin_catch(i8* %.1) nounwind
+  tail call void @__cxa_end_catch()
+  br label %.quit
+}
+
 define fastcc void @System._HandleFinally(i8* %exPtr, i8* %cb, i8* %cbArg) noreturn
 {
   %exobj = tail call i8* @__cxa_begin_catch(i8* %exPtr) nounwind
 
   ; Call cleanup routine
   %cleanProc = bitcast i8* %cb to void (i8*)*
-  invoke void (i8*)* %cleanProc(i8* %cbArg) to label %next1 unwind label %lpad2
+  invoke fastcc void (i8*)* %cleanProc(i8* %cbArg) to label %next1 unwind label %lpad2
 next1:
   invoke void @__cxa_rethrow() noreturn
           to label %unreachable unwind label %lpad2
@@ -217,14 +233,14 @@ define fastcc i64 @System.InterLockedDecrement64(i64* %dest)
 
 define fastcc i32 @System.InterLockedCompareExchange(i32* %dest, i32 %exchange, i32 %comparand)
 {
-	%1 = cmpxchg i32* %dest, i32 %comparand, i32 %exchange seq_cst monotonic
+	%1 = cmpxchg i32* %dest, i32 %comparand, i32 %exchange seq_cst acquire
 	%2 = extractvalue { i32, i1 } %1, 0
 	ret i32 %2
 }
 
 define fastcc i64 @System.InterLockedCompareExchange64(i64* %dest, i64 %exchange, i64 %comparand)
 {
-	%1 = cmpxchg i64* %dest, i64 %comparand, i64 %exchange seq_cst monotonic
+	%1 = cmpxchg i64* %dest, i64 %comparand, i64 %exchange seq_cst acquire
 	%2 = extractvalue { i64, i1 } %1, 0
 	ret i64 %2
 }
