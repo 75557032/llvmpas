@@ -54,7 +54,7 @@ type
     srIntOverflow, srOutOfRange, srIOCheck,
     srRaiseExcept, srSafecallCheck, srHandleSafecallExcept,
     srHandleCtorExcept, srTerminated, srHandleFinally,
-    srRethrow, srIsClass, srAsClass, srFreeAndNil,
+    srRethrow, srFreeExceptObject, srIsClass, srAsClass, srFreeAndNil,
 
     srInt64Div, srInt64Mod, srRound, srTrunc,
 
@@ -225,7 +225,8 @@ type
     FNativeIntType, FNativeUIntType: TIntType;
     FPCharType: TType;
     FPointerType: TType;
-    FFileType: TType;
+    FFileType: TFileType;
+    FTextType: TType;
 
     FUntype: TType;     // 无类型(void)
     FAnytype: TType;    // 没有返回值的表达式, 它的类型就是这个, 代表异常情况
@@ -589,7 +590,8 @@ begin
   FPWideCharType := CreateType(FPointerSize, typPWideChar, 'PWideChar');
 
   FPointerType := CreateType(TPointerType, FPointerSize, 'Pointer');
-  FFileType := CreateType(TFileType, FPointerSize, 'File');
+  FFileType := TFileType(CreateType(TFileType, FPointerSize, 'File'));
+  FTextType := TTextType(CreateType(TTextType, FPointerSize, 'Text'));
 
   // String types
   FAnsiStringType := CreateStrType('AnsiString', strAnsi, FPointerSize);
@@ -859,7 +861,7 @@ const
     '_IntOverflow', '_OutOfRange', '_IOCheck',
     '_RaiseExcept', '_SafecallCheck', '_HandleSafecallExcept',
     '_HandleCtorExcept', '_Terminated', '_HandleFinally',
-    '_Rethrow', '_IsClass', '_AsClass', 'FreeAndNil',
+    '_Rethrow', '_FreeExceptObject', '_IsClass', '_AsClass', 'FreeAndNil',
 
     '_Int64Div', '_Int64Mod', '_Round', '_Trunc',
 
