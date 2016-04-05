@@ -1414,8 +1414,13 @@ procedure TCodeGen.EmitCmd(Cmd: TCmd; Pre: TCmd);
     Self.LeaveLandingpad;
   end;
 
-  procedure EmitEndExcept;
+  procedure EmitEndExcept(Cmd: TEndExceptCmd);
   begin
+    if Cmd.ExceptVar <> '' then
+    begin
+      WriteCode('tail call fastcc void @System._FreeExceptObject(i8** %%%s.addr)',
+          [Cmd.ExceptVar]);
+    end;
     WriteCode('tail call void @__cxa_end_catch()');
   end;
 
@@ -1496,7 +1501,7 @@ begin
       Self.EnterLandingpad(Cmd);
 
     insLeaveBlock: EmitLeaveBlock;
-    insEndExcept: EmitEndExcept();
+    insEndExcept: EmitEndExcept(TEndExceptCmd(Cmd));
     insRaise: EmitRaise(TRaiseCmd(Cmd));
     insReraise: EmitReraise(TReraiseCmd(Cmd));
 

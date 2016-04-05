@@ -296,6 +296,7 @@ type
 
   TEndExceptCmd = class(TCmd)
   public
+    ExceptVar: string;
     constructor Create; override;
   end;
 

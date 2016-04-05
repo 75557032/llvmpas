@@ -58,6 +58,7 @@ type
     FSelfTypeSym: TSymbol;
     FExceptVar, FExPtrVar: TVariable;
     FExceptVarID: Integer;
+    FExceptVarStack: TList;
     //FSetBytesType: TOpenArrayType;
     //FByteSetType: TSetType;
     FBreakLabel, FContinueLabel, FQuitLabel: string;
@@ -706,6 +707,7 @@ var
 begin
 //  FCleanupList.Free;
   FCleanupStack.Free;
+  FExceptVarStack.Free;
   for i := 0 to FNodes.Count-1 do
     TObject(FNodes[i]).Free;
   FNodes.Free;
@@ -1342,10 +1344,11 @@ function TCodePack.EmitExpr_Builtin(E: TBinaryExpr; Sym: TBuiltinFunction
     for I := 0 to FExceptCount - 1 do
     begin
       S := CreateCmd(TEndExceptCmd, E.Coord);
+      // 退出之前释放 exobj
+      Assert(I < FExceptVarStack.Count, 'FExceptVarStack');
+      TEndExceptCmd(S).ExceptVar := TVariable(FExceptVarStack[I]).Name;
       AddCmd(S);
     end;
-
-    // todo 1:退出之前释放 exobj
 
     // 带参数的Exit
     if TListExpr(E.Right).Count > 0 then
@@ -1363,6 +1366,7 @@ function TCodePack.EmitExpr_Builtin(E: TBinaryExpr; Sym: TBuiltinFunction
   procedure EmitContinue;
   var
     I: Integer;
+    S: TCmd;
   begin
     for I := FCleanupStack.Count - 1 downto FCleanupIndex do
     begin
@@ -1371,7 +1375,11 @@ function TCodePack.EmitExpr_Builtin(E: TBinaryExpr; Sym: TBuiltinFunction
     // 退出之前执行异常终止指令
     for I := 0 to FExceptCount - 1 do
     begin
-      AddCmd(CreateCmd(TEndExceptCmd, E.Coord));
+      S := CreateCmd(TEndExceptCmd, E.Coord);
+      // 退出之前释放 exobj
+      Assert(I < FExceptVarStack.Count, 'FExceptVarStack');
+      TEndExceptCmd(S).ExceptVar := TVariable(FExceptVarStack[I]).Name;
+      AddCmd(S);
     end;
     EmitGotoCmd(FContinueLabel, E.Coord);
   end;
@@ -1379,6 +1387,7 @@ function TCodePack.EmitExpr_Builtin(E: TBinaryExpr; Sym: TBuiltinFunction
   procedure EmitBreak;
   var
     I: Integer;
+    S: TCmd;
   begin
     for I := FCleanupStack.Count - 1 downto FCleanupIndex do
     begin
@@ -1387,7 +1396,11 @@ function TCodePack.EmitExpr_Builtin(E: TBinaryExpr; Sym: TBuiltinFunction
     // 退出之前执行异常终止指令
     for I := 0 to FExceptCount - 1 do
     begin
-      AddCmd(CreateCmd(TEndExceptCmd, E.Coord));
+      S := CreateCmd(TEndExceptCmd, E.Coord);
+      // 退出之前释放 exobj
+      Assert(I < FExceptVarStack.Count, 'FExceptVarStack');
+      TEndExceptCmd(S).ExceptVar := TVariable(FExceptVarStack[I]).Name;
+      AddCmd(S);
     end;
     EmitGotoCmd(FBreakLabel, E.Coord);
   end;
@@ -3855,6 +3868,9 @@ begin
     OldVar := FExceptVar;
     FExceptVar := CreateExVar;
 
+    if FExceptVarStack = nil then FExceptVarStack := TList.Create;
+    FExceptVarStack.Add(FExceptVar);
+
     try
       THandleExceptCmd(LIns).ExceptVar := FExceptVar.Name;
       THandleExceptCmd(LIns).Level := FExceptCount;
@@ -3864,6 +3880,7 @@ begin
       AttachExceptCmds(THandleExceptCmd(LIns).Cmds, Start);
     finally
       FExceptVar := OldVar;
+      FExceptVarStack.Delete(FExceptVarStack.Count-1);
     end;
   end;
 
