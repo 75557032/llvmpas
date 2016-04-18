@@ -166,29 +166,27 @@ end;
 {$warn 5057 off}
 function RunDOS(const CommandLine, Dir: String; out ExitCode: DWORD): String;
 
-  function IsProcEnd(hProc: Thandle): Boolean;
-  var
-    Ret: Cardinal;
-  begin
-    Ret := WaitForSingleObject(hProc, 15);
-    Result := Ret = WAIT_OBJECT_0;
-  end;
-
-  function loadText(s: TStream; hProc: THandle): string;
+  function loadText(hFile: THandle): string;
   const
-    BlockSize = 1024;
+    bufSize = 1024;
   var
-    lenReaded, BufLen: Integer;
+    buf: array of Byte;
+    len: Integer;
+    ss: TStringStream;
   begin
-    Result := '';
-    BufLen := 0;
-    repeat
-      if Length(Result) < BufLen + BlockSize then
-        SetLength(Result, BufLen + BlockSize);
-      lenReaded := s.Read(Result[BufLen + 1], BlockSize);
-      Inc(BufLen, lenReaded);
-    until (lenReaded <> BlockSize) and IsProcEnd(hProc);
-    SetLength(Result, BufLen);
+    ss := TStringStream.Create('');
+    try
+      SetLength(buf, bufSize);
+      repeat
+        len := FileRead(hFile, buf[0], bufSize);
+        if (len = -1) or (len = 0) then Break;
+
+        ss.WriteBuffer(buf[0], len);
+      until False;
+      Result := ss.DataString;
+    finally
+      ss.Free;
+    end;
   end;
 var
   HRead,HWrite: THandle;
@@ -196,8 +194,6 @@ var
   ProceInfo: TProcessInformation;
   b: Boolean;
   sa: TSecurityAttributes;
-  inS: THandleStream;
-  sRet: TStrings;
 begin
   Result := '';
   FillChar(sa, SizeOf(sa), 0);
@@ -207,6 +203,8 @@ begin
   sa.lpSecurityDescriptor := nil;
   b := CreatePipe(HRead, HWrite, @sa, 0);
   CheckResult(b);
+
+  SetHandleInformation( HRead, HANDLE_FLAG_INHERIT, 0);
 
   FillChar(StartInfo, SizeOf(StartInfo), 0);
   StartInfo.cb := SizeOf(StartInfo);
@@ -218,43 +216,35 @@ begin
   StartInfo.hStdOutput  := HWrite;
 
   try
-  b := CreateProcess(nil, // lpApplicationName: PChar
-         PChar(CommandLine),    //lpCommandLine: PChar
-         nil,    //lpProcessAttributes: PSecurityAttributes
-         nil,    //lpThreadAttributes: PSecurityAttributes
-         True,    //bInheritHandles: BOOL
-         CREATE_NEW_CONSOLE,
-         nil,
-         PChar(Dir),
-         StartInfo,
-         ProceInfo
-      );
+    b := CreateProcess(nil, // lpApplicationName: PChar
+           PChar(CommandLine),    //lpCommandLine: PChar
+           nil,    //lpProcessAttributes: PSecurityAttributes
+           nil,    //lpThreadAttributes: PSecurityAttributes
+           True,    //bInheritHandles: BOOL
+           CREATE_NEW_CONSOLE,
+           nil,
+           PChar(Dir),
+           StartInfo,
+           ProceInfo
+        );
 
-  CheckResult(b);
+    CheckResult(b);
 
-  inS := THandleStream.Create(HRead);
-  try
-    Result := loadText(ins, ProceInfo.hProcess);
-  finally
-    inS.free;
-  end;
-{  if inS.Size > 0 then
-  begin
-    sRet := TStringList.Create;
-    sRet.LoadFromStream(inS);
-    Result := sRet.Text;
-    sRet.Free;
-  end;
-  inS.Free;}
-  //WaitForSingleObject(ProceInfo.hProcess, INFINITE);
+    // Close the write end of the pipe before reading from the
+    // read end of the pipe.
+    CloseHandle(hWrite);
+    Result := loadText(HRead);
 
-  ExitCode := 0;
-  GetExitCodeProcess(ProceInfo.hProcess, ExitCode);
-     CloseHandle(ProceInfo.hProcess);
-     CloseHandle(ProceInfo.hThread);
+    WaitForSingleObject(ProceInfo.hProcess, INFINITE);
+
+    ExitCode := 0;
+    GetExitCodeProcess(ProceInfo.hProcess, ExitCode);
+
+    CloseHandle(ProceInfo.hProcess);
+    CloseHandle(ProceInfo.hThread);
   finally
     CloseHandle(HRead);
-    CloseHandle(HWrite);
+  //  CloseHandle(HWrite);
   end;
 end;
 {$warn 5057 on}
